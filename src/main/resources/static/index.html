@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SSE Broadcast Demo</title>
+    <script src="/static/htmx.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        .form-container {
+            background-color: #f5f5f5;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        input[type="text"] {
+            width: 70%;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #message-display {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            min-height: 100px;
+        }
+        .message {
+            padding: 12px;
+            background-color: #e7f3fe;
+            border-left: 4px solid #2196F3;
+            border-radius: 3px;
+            font-size: 16px;
+            line-height: 1.5;
+        }
+        .message strong {
+            color: #1976D2;
+        }
+        .no-message {
+            color: #999;
+            font-style: italic;
+        }
+        .status {
+            color: #666;
+            font-style: italic;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>SSE Broadcast Demo</h1>
+
+    <div class="form-container">
+        <h2>Send Message to All SSE Clients</h2>
+        <form hx-post="/broadcast"
+              hx-trigger="submit"
+              hx-target="#message-display"
+              hx-swap="innerHTML">
+            <input type="text" name="message" placeholder="Enter your message..." required>
+            <button type="submit">Send to All Clients</button>
+        </form>
+    </div>
+
+    <h2>Latest Message:</h2>
+    <div class="status" id="status">Connecting to SSE stream...</div>
+    <div id="message-display">
+        <div class="no-message">No messages yet...</div>
+    </div>
+
+    <script>
+        // Wait for page to load before connecting to SSE
+        setTimeout(function() {
+            const eventSource = new EventSource('/events');
+            const messageDisplay = document.getElementById('message-display');
+            const statusDiv = document.getElementById('status');
+
+            eventSource.onopen = function() {
+                statusDiv.textContent = 'Connected to SSE stream';
+                statusDiv.style.color = 'green';
+            };
+
+            eventSource.onmessage = function(event) {
+                // Replace the entire content with the latest message (innerHTML swap)
+                messageDisplay.innerHTML = event.data;
+            };
+
+            eventSource.onerror = function() {
+                statusDiv.textContent = 'Error connecting to SSE stream';
+                statusDiv.style.color = 'red';
+            };
+        }, 100);
+
+        // Clear form after successful submission
+        document.body.addEventListener('htmx:afterRequest', function(evt) {
+            if (evt.detail.successful) {
+                evt.detail.elt.reset();
+            }
+        });
+    </script>
+</body>
+</html>
