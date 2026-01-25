@@ -21,7 +21,6 @@ kotlin {
 
 repositories {
     mavenCentral()
-    maven("https://jitpack.io")
 }
 
 dependencies {
@@ -36,7 +35,7 @@ dependencies {
     implementation("io.ktor:ktor-server-config-yaml")
 
     // Type-safe HTMX attributes for kotlinx-html
-    implementation("com.github.MartinWie:kotlinx-htmx:v0.2.0")
+    implementation("io.github.martinwie:kotlinx-htmx:0.1.0")
 
     testImplementation("io.ktor:ktor-server-test-host")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
