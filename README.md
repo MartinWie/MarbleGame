@@ -32,6 +32,24 @@ A real-time multiplayer marble game inspired by the Korean drama "Squid Game". B
 
 ## Quick Start
 
+### Using Docker (Recommended)
+
+```bash
+# Build the image
+docker build -t marble-game .
+
+# Run the container
+docker run -d -p 8080:8080 --name marble-game marble-game
+
+# Open in browser
+open http://localhost:8080
+
+# Stop the container
+docker stop marble-game
+```
+
+### Using Gradle
+
 ```bash
 # Run the server
 ./gradlew run
@@ -54,8 +72,9 @@ open http://localhost:8080
 |------|-------------|
 | `./gradlew run` | Run the development server |
 | `./gradlew build` | Build everything |
-| `./gradlew buildFatJar` | Build executable JAR with all dependencies |
+| `./gradlew shadowJar` | Build executable JAR with all dependencies |
 | `./gradlew test` | Run tests |
+| `docker build -t marble-game .` | Build Docker image (~221MB) |
 
 ## Project Structure
 
@@ -105,3 +124,15 @@ src/main/resources/
 ## Network
 
 The server runs on port `8080` by default. To play with others on the same network, find your local IP (e.g., `192.168.x.x`) and share `http://<your-ip>:8080`.
+
+## Docker
+
+The project uses a multi-stage Dockerfile with Google's **distroless** base image for a minimal, secure container:
+
+- **Build stage**: `gradle:8.14-jdk21` - compiles and creates the shadow JAR
+- **Runtime stage**: `gcr.io/distroless/java21-debian12:nonroot` - minimal JRE only
+
+Benefits:
+- ~221MB image size (vs ~400-500MB with full JDK)
+- No shell or package manager (reduced attack surface)
+- Runs as non-root user
