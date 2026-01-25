@@ -511,7 +511,7 @@ fun renderGameState(
                             p("hint") { +"phase.waiting.needPlayers".t(lang) }
                         } else {
                             val hostName = game.players[game.creatorSessionId]?.name?.escapeHtml() ?: "Host"
-                            p("hint") { +"phase.waiting.waitingHost".t(lang, hostName) }
+                            p("hint") { tr("phase.waiting.waitingHost", lang, hostName) }
                         }
                     }
                 }
@@ -539,7 +539,7 @@ fun renderGameState(
                                         }
                                     }
                                 }
-                                p("marble-count") { +"phase.placing.count".t(lang) }
+                                p("marble-count") { tr("phase.placing.count", lang) }
                                 button(type = ButtonType.submit, classes = "btn btn-primary") {
                                     +"button.placeMarbles".t(lang)
                                 }
@@ -548,7 +548,7 @@ fun renderGameState(
                     } else {
                         div("phase-info") {
                             h2 { +"phase.placing.waiting".t(lang) }
-                            p { +"phase.placing.deciding".t(lang, game.currentPlayer?.name?.escapeHtml() ?: "") }
+                            p { tr("phase.placing.deciding", lang, game.currentPlayer?.name?.escapeHtml() ?: "") }
                             div("waiting-animation") { +"..." }
                         }
                     }
@@ -558,7 +558,7 @@ fun renderGameState(
                     if (isCurrentPlayer) {
                         div("phase-info") {
                             h2 { +"phase.guessing.waitingGuesses".t(lang) }
-                            p { +"phase.guessing.youPlaced".t(lang, game.currentMarblesPlaced) }
+                            p { tr("phase.guessing.youPlaced", lang, game.currentMarblesPlaced) }
                             val guessedCount = game.connectedActivePlayers.count { it.currentGuess != null && it.sessionId != sessionId }
                             val totalGuessers = game.connectedActivePlayers.count { it.sessionId != sessionId }
                             p { +"phase.guessing.guessCount".t(lang, guessedCount, totalGuessers) }
@@ -571,12 +571,12 @@ fun renderGameState(
                     } else if (player?.currentGuess != null) {
                         div("phase-info") {
                             h2 { +"phase.guessing.waitingOthers".t(lang) }
-                            p { +"phase.guessing.youGuessed".t(lang, player.currentGuess.toString()) }
+                            p { tr("phase.guessing.youGuessed", lang, player.currentGuess.toString()) }
                         }
                     } else {
                         div("phase-info") {
                             h2 { +"phase.guessing.makeGuess".t(lang) }
-                            p { +"phase.guessing.prompt".t(lang, game.currentPlayer?.name?.escapeHtml() ?: "") }
+                            p { tr("phase.guessing.prompt", lang, game.currentPlayer?.name?.escapeHtml() ?: "") }
                             div("guess-buttons") {
                                 button(classes = "btn btn-even") {
                                     hxPost("/game/${game.id}/guess")
@@ -601,9 +601,9 @@ fun renderGameState(
                         h2 { +"phase.result.title".t(lang) }
                         if (result != null) {
                             div("result-card") {
-                                p { +"phase.result.placed".t(lang, result.placerName.escapeHtml(), result.marblesPlaced) }
+                                p { tr("phase.result.placed", lang, result.placerName.escapeHtml(), result.marblesPlaced) }
                                 p("result-answer") {
-                                    +if (result.wasEven) "phase.result.wasEven".t(lang) else "phase.result.wasOdd".t(lang)
+                                    tr(if (result.wasEven) "phase.result.wasEven" else "phase.result.wasOdd", lang)
                                 }
                                 if (result.winners.isNotEmpty()) {
                                     p("winners") {
@@ -656,10 +656,10 @@ fun renderGameState(
         if (player != null) {
             div("your-status") {
                 if (isPending) {
-                    span { +"status.watching".t(lang) }
+                    span { tr("status.watching", lang) }
                     span("pending-badge") { +"status.pending".t(lang) }
                 } else {
-                    span { +"status.yourMarbles".t(lang, player.marbles) }
+                    span { tr("status.yourMarbles", lang, player.marbles) }
                     if (player.isSpectator) {
                         span("spectator-badge") { +"players.spectator".t(lang) }
                     }

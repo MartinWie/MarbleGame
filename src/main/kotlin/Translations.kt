@@ -213,3 +213,27 @@ fun String.t(
     lang: String,
     vararg args: Any,
 ): String = Translations.get(lang, this, *args)
+
+/**
+ * Outputs a translated string as raw HTML into the current element.
+ *
+ * Use this for translation strings that contain HTML markup (e.g., `<strong>`, `<span>`).
+ * User-provided arguments MUST be escaped with [escapeHtml] before passing to this function
+ * to prevent XSS attacks.
+ *
+ * Example:
+ * ```kotlin
+ * p { tr("phase.result.placed", lang, playerName.escapeHtml(), marbleCount) }
+ * ```
+ *
+ * @param key The translation key
+ * @param lang The language code (e.g., "en", "de")
+ * @param args Optional format arguments (must be pre-escaped if user input!)
+ */
+fun kotlinx.html.FlowOrPhrasingContent.tr(
+    key: String,
+    lang: String,
+    vararg args: Any,
+) {
+    consumer.onTagContentUnsafe { +key.t(lang, *args) }
+}
