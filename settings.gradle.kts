@@ -1,4 +1,4 @@
-rootProject.name = "SSE"
+rootProject.name = "Marbles"
 
 dependencyResolutionManagement {
     repositories {
