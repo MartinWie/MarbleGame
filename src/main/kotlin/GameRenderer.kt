@@ -1,5 +1,6 @@
 package de.mw
 
+import io.github.martinwie.htmx.*
 import kotlinx.html.*
 
 /**
@@ -60,7 +61,7 @@ fun HTML.renderGamePage(
     head {
         title { +"${"game.title".t(lang)} - ${game.id}" }
         meta(name = "viewport", content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no")
-        
+
         // Favicon and app icons
         link(rel = "icon", href = "/static/favicon.ico", type = "image/x-icon")
         link(rel = "apple-touch-icon", href = "/static/apple-touch-icon.png")
@@ -69,7 +70,7 @@ fun HTML.renderGamePage(
         meta(name = "apple-mobile-web-app-capable", content = "yes")
         meta(name = "apple-mobile-web-app-status-bar-style", content = "black-translucent")
         meta(name = "apple-mobile-web-app-title", content = "game.title".t(lang))
-        
+
         script(src = "/static/htmx.min.js") {}
         link(rel = "stylesheet", href = "/static/style.css")
     }
@@ -425,242 +426,245 @@ fun renderGameState(
     val isCurrentPlayer = game.currentPlayer?.sessionId == sessionId
     val isCreator = game.creatorSessionId == sessionId
 
-    return buildString {
+    return buildHTMLString {
         // Players list
-        append("""<div class="players-section">""")
-        append("""<h3>${"players.title".t(lang)}</h3>""")
-        append("""<div class="players-list">""")
-        game.allPlayers.forEach { p ->
-            val statusClass =
-                buildString {
-                    when {
-                        p.sessionId == sessionId -> append("you")
-                        p.isSpectator -> append("spectator")
-                        game.currentPlayer?.sessionId == p.sessionId -> append("current")
-                    }
-                    if (!p.connected && p.sessionId != sessionId) {
-                        append(" disconnected")
+        div("players-section") {
+            h3 { +"players.title".t(lang) }
+            div("players-list") {
+                game.allPlayers.forEach { p ->
+                    val statusClass =
+                        buildString {
+                            when {
+                                p.sessionId == sessionId -> append("you")
+                                p.isSpectator -> append("spectator")
+                                game.currentPlayer?.sessionId == p.sessionId -> append("current")
+                            }
+                            if (!p.connected && p.sessionId != sessionId) {
+                                append(" disconnected")
+                            }
+                        }
+                    val gracePeriodRemaining = p.gracePeriodRemainingSeconds()
+                    val markerText =
+                        when {
+                            p.sessionId == sessionId -> " ${"players.you".t(lang)}"
+                            !p.connected && gracePeriodRemaining > 0 -> ""
+                            !p.connected -> " ${"players.offline".t(lang)}"
+                            game.currentPlayer?.sessionId == p.sessionId && game.phase != GamePhase.WAITING_FOR_PLAYERS -> " ${"players.current".t(
+                                lang,
+                            )}"
+                            else -> ""
+                        }
+                    div("player-card $statusClass") {
+                        div("player-name") { +("${p.name.escapeHtml()}$markerText") }
+                        div("player-marbles") { +"${p.marbles} ${"players.marbles".t(lang)}" }
+                        if (p.isSpectator) {
+                            div("player-status") { +"players.spectator".t(lang) }
+                        }
+                        if (!p.connected && gracePeriodRemaining > 0 && p.sessionId != sessionId) {
+                            div("player-countdown") {
+                                attributes["data-seconds"] = gracePeriodRemaining.toString()
+                                attributes["data-player"] = p.sessionId
+                                +"${"players.reconnecting".t(lang)} "
+                                span("countdown-timer") { +"${gracePeriodRemaining}s" }
+                            }
+                        } else if (!p.connected && p.sessionId != sessionId) {
+                            div("player-disconnected") { +"players.disconnected".t(lang) }
+                        }
+                        if (game.phase == GamePhase.GUESSING && p.currentGuess != null && p.sessionId != game.currentPlayer?.sessionId) {
+                            div("player-guessed") { +"players.guessed".t(lang) }
+                        }
                     }
                 }
-            val gracePeriodRemaining = p.gracePeriodRemainingSeconds()
-            val markerText =
-                when {
-                    p.sessionId == sessionId -> " ${"players.you".t(lang)}"
-                    !p.connected && gracePeriodRemaining > 0 -> "" // Will show countdown instead
-                    !p.connected -> " ${"players.offline".t(lang)}"
-                    game.currentPlayer?.sessionId == p.sessionId && game.phase != GamePhase.WAITING_FOR_PLAYERS -> " ${"players.current".t(
-                        lang,
-                    )}"
-                    else -> ""
+                // Show pending players
+                if (game.pendingPlayers.isNotEmpty()) {
+                    div("pending-players") {
+                        h4 { +"players.joiningNextRound".t(lang) }
+                        game.pendingPlayers.forEach { p ->
+                            val isYou = p.sessionId == sessionId
+                            val statusClass = if (isYou) "you pending" else "pending"
+                            div("player-card $statusClass") {
+                                div("player-name") { +("${p.name.escapeHtml()}${if (isYou) " ${"players.you".t(lang)}" else ""}") }
+                                div("player-status") { +"players.spectatorJoining".t(lang) }
+                            }
+                        }
+                    }
                 }
-            append("""<div class="player-card $statusClass">""")
-            append("""<div class="player-name">${p.name.escapeHtml()}$markerText</div>""")
-            append("""<div class="player-marbles">${p.marbles} ${"players.marbles".t(lang)}</div>""")
-            if (p.isSpectator) {
-                append("""<div class="player-status">${"players.spectator".t(lang)}</div>""")
             }
-            // Show countdown timer for disconnected players within grace period
-            if (!p.connected && gracePeriodRemaining > 0 && p.sessionId != sessionId) {
-                append("""<div class="player-countdown" data-seconds="$gracePeriodRemaining" data-player="${p.sessionId}">""")
-                append("""${"players.reconnecting".t(lang)} <span class="countdown-timer">${gracePeriodRemaining}s</span>""")
-                append("""</div>""")
-            } else if (!p.connected && p.sessionId != sessionId) {
-                append("""<div class="player-disconnected">${"players.disconnected".t(lang)}</div>""")
-            }
-            if (game.phase == GamePhase.GUESSING && p.currentGuess != null && p.sessionId != game.currentPlayer?.sessionId) {
-                append("""<div class="player-guessed">${"players.guessed".t(lang)}</div>""")
-            }
-            append("""</div>""")
         }
-        // Show pending players (spectators joining next round)
-        if (game.pendingPlayers.isNotEmpty()) {
-            append("""<div class="pending-players">""")
-            append("""<h4>${"players.joiningNextRound".t(lang)}</h4>""")
-            game.pendingPlayers.forEach { p ->
-                val isYou = p.sessionId == sessionId
-                val statusClass = if (isYou) "you pending" else "pending"
-                append("""<div class="player-card $statusClass">""")
-                append("""<div class="player-name">${p.name.escapeHtml()}${if (isYou) " ${"players.you".t(lang)}" else ""}</div>""")
-                append("""<div class="player-status">${"players.spectatorJoining".t(lang)}</div>""")
-                append("""</div>""")
-            }
-            append("""</div>""")
-        }
-        append("""</div></div>""")
 
         // Game area
-        append("""<div class="game-area">""")
-
-        when (game.phase) {
-            GamePhase.WAITING_FOR_PLAYERS -> {
-                val connectedCount = game.players.values.count { it.connected }
-                val totalPlayers = game.allPlayers.size
-                append("""<div class="phase-info">""")
-                append("""<h2>${"phase.waiting.title".t(lang)}</h2>""")
-                append("""<p>${"phase.waiting.playerCount".t(lang, totalPlayers, connectedCount)}</p>""")
-                if (isCreator && connectedCount >= 2) {
-                    append(
-                        """<button class="btn btn-primary" hx-post="/game/${game.id}/start" hx-swap="none">${"button.startGame".t(
-                            lang,
-                        )}</button>""",
-                    )
-                } else if (isCreator) {
-                    append("""<p class="hint">${"phase.waiting.needPlayers".t(lang)}</p>""")
-                } else {
-                    val hostName = game.players[game.creatorSessionId]?.name?.escapeHtml() ?: "Host"
-                    append("""<p class="hint">${"phase.waiting.waitingHost".t(lang, hostName)}</p>""")
-                }
-                append("""</div>""")
-            }
-
-            GamePhase.PLACING_MARBLES -> {
-                if (isCurrentPlayer && player != null) {
-                    append("""<div class="phase-info">""")
-                    append("""<h2>${"phase.placing.yourTurn".t(lang)}</h2>""")
-                    append("""<p>${"phase.placing.instruction".t(lang)}</p>""")
-                    append("""<form hx-post="/game/${game.id}/place" hx-swap="none" class="place-form" id="place-form">""")
-                    append("""<input type="hidden" name="amount" id="marble-amount" value="1" />""")
-                    append("""<div class="marble-grid" id="marble-picker">""")
-                    for (i in 1..player.marbles) {
-                        val selectedClass = if (i == 1) " selected" else ""
-                        append("""<button type="button" class="marble-btn$selectedClass" data-value="$i">$i</button>""")
-                    }
-                    append("""</div>""")
-                    append("""<p class="marble-count">${"phase.placing.count".t(lang)}</p>""")
-                    append("""<button type="submit" class="btn btn-primary">${"button.placeMarbles".t(lang)}</button>""")
-                    append("""</form>""")
-                    append("""</div>""")
-                } else {
-                    append("""<div class="phase-info">""")
-                    append("""<h2>${"phase.placing.waiting".t(lang)}</h2>""")
-                    append("""<p>${"phase.placing.deciding".t(lang, game.currentPlayer?.name?.escapeHtml() ?: "")}</p>""")
-                    append("""<div class="waiting-animation">...</div>""")
-                    append("""</div>""")
-                }
-            }
-
-            GamePhase.GUESSING -> {
-                if (isCurrentPlayer) {
-                    append("""<div class="phase-info">""")
-                    append("""<h2>${"phase.guessing.waitingGuesses".t(lang)}</h2>""")
-                    append("""<p>${"phase.guessing.youPlaced".t(lang, game.currentMarblesPlaced)}</p>""")
-                    val guessedCount = game.connectedActivePlayers.count { it.currentGuess != null && it.sessionId != sessionId }
-                    val totalGuessers = game.connectedActivePlayers.count { it.sessionId != sessionId }
-                    append("""<p>${"phase.guessing.guessCount".t(lang, guessedCount, totalGuessers)}</p>""")
-                    append("""</div>""")
-                } else if (player?.isSpectator == true) {
-                    append("""<div class="phase-info">""")
-                    append("""<h2>${"phase.guessing.spectating".t(lang)}</h2>""")
-                    append("""<p>${"phase.guessing.outOfMarbles".t(lang)}</p>""")
-                    append("""</div>""")
-                } else if (player?.currentGuess != null) {
-                    append("""<div class="phase-info">""")
-                    append("""<h2>${"phase.guessing.waitingOthers".t(lang)}</h2>""")
-                    append("""<p>${"phase.guessing.youGuessed".t(lang, player.currentGuess.toString())}</p>""")
-                    append("""</div>""")
-                } else {
-                    append("""<div class="phase-info">""")
-                    append("""<h2>${"phase.guessing.makeGuess".t(lang)}</h2>""")
-                    append(
-                        """<p>${"phase.guessing.prompt".t(lang, game.currentPlayer?.name?.escapeHtml() ?: "")}</p>""",
-                    )
-                    append("""<div class="guess-buttons">""")
-                    append(
-                        """<button class="btn btn-even" hx-post="/game/${game.id}/guess" hx-vals='{"guess":"EVEN"}' hx-swap="none">${"guess.even".t(
-                            lang,
-                        )}</button>""",
-                    )
-                    append(
-                        """<button class="btn btn-odd" hx-post="/game/${game.id}/guess" hx-vals='{"guess":"ODD"}' hx-swap="none">${"guess.odd".t(
-                            lang,
-                        )}</button>""",
-                    )
-                    append("""</div></div>""")
-                }
-            }
-
-            GamePhase.ROUND_RESULT -> {
-                val result = game.lastRoundResult
-                append("""<div class="phase-info result-phase">""")
-                append("""<h2>${"phase.result.title".t(lang)}</h2>""")
-                if (result != null) {
-                    append("""<div class="result-card">""")
-                    append(
-                        """<p>${"phase.result.placed".t(lang, result.placerName.escapeHtml(), result.marblesPlaced)}</p>""",
-                    )
-                    append(
-                        """<p class="result-answer">${if (result.wasEven) {
-                            "phase.result.wasEven".t(
-                                lang,
-                            )
+        div("game-area") {
+            when (game.phase) {
+                GamePhase.WAITING_FOR_PLAYERS -> {
+                    val connectedCount = game.players.values.count { it.connected }
+                    val totalPlayers = game.allPlayers.size
+                    div("phase-info") {
+                        h2 { +"phase.waiting.title".t(lang) }
+                        p { +"phase.waiting.playerCount".t(lang, totalPlayers, connectedCount) }
+                        if (isCreator && connectedCount >= 2) {
+                            button(classes = "btn btn-primary") {
+                                hxPost("/game/${game.id}/start")
+                                hxSwap(HxSwapOption.NONE)
+                                +"button.startGame".t(lang)
+                            }
+                        } else if (isCreator) {
+                            p("hint") { +"phase.waiting.needPlayers".t(lang) }
                         } else {
-                            "phase.result.wasOdd".t(lang)
-                        }}</p>""",
-                    )
-                    if (result.winners.isNotEmpty()) {
-                        append(
-                            """<p class="winners">${"phase.result.winners".t(
-                                lang,
-                                result.winners.joinToString(", ") { it.escapeHtml() },
-                                result.marblesWonPerWinner,
-                            )}</p>""",
-                        )
+                            val hostName = game.players[game.creatorSessionId]?.name?.escapeHtml() ?: "Host"
+                            p("hint") { +"phase.waiting.waitingHost".t(lang, hostName) }
+                        }
                     }
-                    if (result.losers.isNotEmpty()) {
-                        append(
-                            """<p class="losers">${"phase.result.losers".t(
-                                lang,
-                                result.losers.joinToString(", ") { it.escapeHtml() },
-                            )}</p>""",
-                        )
-                    }
-                    append("""</div>""")
                 }
-                append(
-                    """<button class="btn btn-primary" hx-post="/game/${game.id}/next-round" hx-swap="none">${"button.continue".t(
-                        lang,
-                    )}</button>""",
-                )
-                append("""</div>""")
-            }
 
-            GamePhase.GAME_OVER -> {
-                val winner = game.getWinner()
-                append("""<div class="phase-info game-over">""")
-                append("""<h2>${"phase.gameOver.title".t(lang)}</h2>""")
-                if (winner != null) {
-                    append("""<div class="winner-announcement">""")
-                    append("""<p class="winner-text">${"phase.gameOver.winner".t(lang, winner.name.escapeHtml(), winner.marbles)}</p>""")
-                    if (winner.sessionId == sessionId) {
-                        append("""<p class="you-won">${"phase.gameOver.youWon".t(lang)}</p>""")
+                GamePhase.PLACING_MARBLES -> {
+                    if (isCurrentPlayer && player != null) {
+                        div("phase-info") {
+                            h2 { +"phase.placing.yourTurn".t(lang) }
+                            p { +"phase.placing.instruction".t(lang) }
+                            form(classes = "place-form") {
+                                id = "place-form"
+                                hxPost("/game/${game.id}/place")
+                                hxSwap(HxSwapOption.NONE)
+                                hiddenInput(name = "amount") {
+                                    id = "marble-amount"
+                                    value = "1"
+                                }
+                                div("marble-grid") {
+                                    id = "marble-picker"
+                                    for (i in 1..player.marbles) {
+                                        val selectedClass = if (i == 1) "marble-btn selected" else "marble-btn"
+                                        button(type = ButtonType.button, classes = selectedClass) {
+                                            attributes["data-value"] = i.toString()
+                                            +"$i"
+                                        }
+                                    }
+                                }
+                                p("marble-count") { +"phase.placing.count".t(lang) }
+                                button(type = ButtonType.submit, classes = "btn btn-primary") {
+                                    +"button.placeMarbles".t(lang)
+                                }
+                            }
+                        }
+                    } else {
+                        div("phase-info") {
+                            h2 { +"phase.placing.waiting".t(lang) }
+                            p { +"phase.placing.deciding".t(lang, game.currentPlayer?.name?.escapeHtml() ?: "") }
+                            div("waiting-animation") { +"..." }
+                        }
                     }
-                    append("""</div>""")
                 }
-                append(
-                    """<button class="btn btn-primary" hx-post="/game/${game.id}/new-game" hx-swap="none">${"button.playAgain".t(
-                        lang,
-                    )}</button>""",
-                )
-                append("""</div>""")
+
+                GamePhase.GUESSING -> {
+                    if (isCurrentPlayer) {
+                        div("phase-info") {
+                            h2 { +"phase.guessing.waitingGuesses".t(lang) }
+                            p { +"phase.guessing.youPlaced".t(lang, game.currentMarblesPlaced) }
+                            val guessedCount = game.connectedActivePlayers.count { it.currentGuess != null && it.sessionId != sessionId }
+                            val totalGuessers = game.connectedActivePlayers.count { it.sessionId != sessionId }
+                            p { +"phase.guessing.guessCount".t(lang, guessedCount, totalGuessers) }
+                        }
+                    } else if (player?.isSpectator == true) {
+                        div("phase-info") {
+                            h2 { +"phase.guessing.spectating".t(lang) }
+                            p { +"phase.guessing.outOfMarbles".t(lang) }
+                        }
+                    } else if (player?.currentGuess != null) {
+                        div("phase-info") {
+                            h2 { +"phase.guessing.waitingOthers".t(lang) }
+                            p { +"phase.guessing.youGuessed".t(lang, player.currentGuess.toString()) }
+                        }
+                    } else {
+                        div("phase-info") {
+                            h2 { +"phase.guessing.makeGuess".t(lang) }
+                            p { +"phase.guessing.prompt".t(lang, game.currentPlayer?.name?.escapeHtml() ?: "") }
+                            div("guess-buttons") {
+                                button(classes = "btn btn-even") {
+                                    hxPost("/game/${game.id}/guess")
+                                    hxVals("""{"guess":"EVEN"}""")
+                                    hxSwap(HxSwapOption.NONE)
+                                    +"guess.even".t(lang)
+                                }
+                                button(classes = "btn btn-odd") {
+                                    hxPost("/game/${game.id}/guess")
+                                    hxVals("""{"guess":"ODD"}""")
+                                    hxSwap(HxSwapOption.NONE)
+                                    +"guess.odd".t(lang)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                GamePhase.ROUND_RESULT -> {
+                    val result = game.lastRoundResult
+                    div("phase-info result-phase") {
+                        h2 { +"phase.result.title".t(lang) }
+                        if (result != null) {
+                            div("result-card") {
+                                p { +"phase.result.placed".t(lang, result.placerName.escapeHtml(), result.marblesPlaced) }
+                                p("result-answer") {
+                                    +if (result.wasEven) "phase.result.wasEven".t(lang) else "phase.result.wasOdd".t(lang)
+                                }
+                                if (result.winners.isNotEmpty()) {
+                                    p("winners") {
+                                        +"phase.result.winners".t(
+                                            lang,
+                                            result.winners.joinToString(", ") { it.escapeHtml() },
+                                            result.marblesWonPerWinner,
+                                        )
+                                    }
+                                }
+                                if (result.losers.isNotEmpty()) {
+                                    p("losers") {
+                                        +"phase.result.losers".t(lang, result.losers.joinToString(", ") { it.escapeHtml() })
+                                    }
+                                }
+                            }
+                        }
+                        button(classes = "btn btn-primary") {
+                            hxPost("/game/${game.id}/next-round")
+                            hxSwap(HxSwapOption.NONE)
+                            +"button.continue".t(lang)
+                        }
+                    }
+                }
+
+                GamePhase.GAME_OVER -> {
+                    val winner = game.getWinner()
+                    div("phase-info game-over") {
+                        h2 { +"phase.gameOver.title".t(lang) }
+                        if (winner != null) {
+                            div("winner-announcement") {
+                                p("winner-text") { +"phase.gameOver.winner".t(lang, winner.name.escapeHtml(), winner.marbles) }
+                                if (winner.sessionId == sessionId) {
+                                    p("you-won") { +"phase.gameOver.youWon".t(lang) }
+                                }
+                            }
+                        }
+                        button(classes = "btn btn-primary") {
+                            hxPost("/game/${game.id}/new-game")
+                            hxSwap(HxSwapOption.NONE)
+                            +"button.playAgain".t(lang)
+                        }
+                    }
+                }
             }
         }
-
-        append("""</div>""")
 
         // Your status
         val isPending = game.pendingPlayers.any { it.sessionId == sessionId }
         if (player != null) {
-            append("""<div class="your-status">""")
-            if (isPending) {
-                append("""<span>${"status.watching".t(lang)}</span>""")
-                append("""<span class="pending-badge">${"status.pending".t(lang)}</span>""")
-            } else {
-                append("""<span>${"status.yourMarbles".t(lang, player.marbles)}</span>""")
-                if (player.isSpectator) {
-                    append("""<span class="spectator-badge">${"players.spectator".t(lang)}</span>""")
+            div("your-status") {
+                if (isPending) {
+                    span { +"status.watching".t(lang) }
+                    span("pending-badge") { +"status.pending".t(lang) }
+                } else {
+                    span { +"status.yourMarbles".t(lang, player.marbles) }
+                    if (player.isSpectator) {
+                        span("spectator-badge") { +"players.spectator".t(lang) }
+                    }
                 }
             }
-            append("""</div>""")
         }
     }
 }

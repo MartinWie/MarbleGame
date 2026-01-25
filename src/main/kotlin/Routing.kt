@@ -1,5 +1,6 @@
 package de.mw
 
+import io.github.martinwie.htmx.*
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.html.*
@@ -53,8 +54,8 @@ fun Application.configureRouting() {
                         div("card") {
                             h2 { +"home.createGame".t(lang) }
                             form {
-                                attributes["hx-post"] = "/game/create"
-                                attributes["hx-target"] = "body"
+                                hxPost("/game/create")
+                                hxTarget("body")
 
                                 div("form-group") {
                                     label { +"home.yourName".t(lang) }
@@ -184,8 +185,8 @@ fun Application.configureRouting() {
                                 p("hint") { +"join.spectatorHint".t(lang) }
                             }
                             form {
-                                attributes["hx-post"] = "/game/join"
-                                attributes["hx-target"] = "body"
+                                hxPost("/game/join")
+                                hxTarget("body")
 
                                 input(type = InputType.hidden, name = "gameId") { value = gameId }
                                 div("form-group") {
