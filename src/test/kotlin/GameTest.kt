@@ -451,4 +451,56 @@ class GameTest {
         assertEquals(0, game.currentMarblesPlaced)
         assertNull(game.lastRoundResult)
     }
+
+    // ==================== Cleanup Tests ====================
+
+    @Test
+    fun `cleanup closes all player channels`() {
+        val game = createGameWithPlayers("Alice", "Bob", "Charlie")
+
+        // Verify channels are open
+        game.players.values.forEach { player ->
+            assertFalse(player.channel.isClosedForSend)
+        }
+
+        game.cleanup()
+
+        // All channels should be closed
+        game.players.values.forEach { player ->
+            assertTrue(player.channel.isClosedForSend)
+        }
+    }
+
+    @Test
+    fun `cleanup is idempotent - can be called multiple times`() {
+        val game = createGameWithPlayers("Alice", "Bob")
+
+        game.cleanup()
+        // Should not throw when called again
+        game.cleanup()
+
+        game.players.values.forEach { player ->
+            assertTrue(player.channel.isClosedForSend)
+        }
+    }
+
+    @Test
+    fun `cleanup works with no players`() {
+        val game = Game(creatorSessionId = "creator", random = kotlin.random.Random(1))
+
+        // Should not throw
+        game.cleanup()
+    }
+
+    @Test
+    fun `cleanup closes channels for pending players too`() {
+        val game = createGameWithPlayers("Alice", "Bob")
+        game.startGame()
+        val pendingPlayer = game.addPendingPlayer("pending1", "Charlie")
+        pendingPlayer.connected = true
+
+        game.cleanup()
+
+        assertTrue(pendingPlayer.channel.isClosedForSend)
+    }
 }
