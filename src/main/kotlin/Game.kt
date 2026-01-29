@@ -607,4 +607,17 @@ class Game(
 
         logger.info("Game {} reset with {} players", id, playerOrder.size)
     }
+
+    /**
+     * Cleans up resources when the game is being removed.
+     *
+     * Closes all player channels to ensure coroutines waiting on them
+     * are properly notified and resources are released immediately.
+     */
+    fun cleanup() {
+        players.values.forEach { player ->
+            runCatching { player.channel.close() }
+        }
+        logger.debug("Game {} cleaned up, closed {} player channels", id, players.size)
+    }
 }

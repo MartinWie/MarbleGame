@@ -129,6 +129,7 @@ object GameManager {
      * Cleans up old/abandoned games based on their TTL.
      *
      * Called automatically by the scheduler, but can also be called manually for testing.
+     * Closes all player channels before removing games to ensure proper resource cleanup.
      */
     fun cleanupOldGames() {
         val now = System.currentTimeMillis()
@@ -149,7 +150,7 @@ object GameManager {
         }
 
         toRemove.forEach { gameId ->
-            games.remove(gameId)
+            games.remove(gameId)?.cleanup()
         }
 
         if (toRemove.isNotEmpty()) {
