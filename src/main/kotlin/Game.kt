@@ -3,6 +3,7 @@ package de.mw
 import org.slf4j.LoggerFactory
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.random.Random
 
 private val logger = LoggerFactory.getLogger(Game::class.java)
 
@@ -81,10 +82,12 @@ data class RoundResult(
  *
  * @property id Unique game identifier (8-character code for sharing)
  * @param creatorSessionId Session ID of the player who created the game
+ * @param random Random source for starting player selection (injectable for testing)
  */
 class Game(
     val id: String = UUID.randomUUID().toString().substring(0, 8),
     creatorSessionId: String,
+    private val random: Random = Random.Default,
 ) {
     /** Timestamp when this game was created (for cleanup purposes). */
     val createdAt: Long = System.currentTimeMillis()
@@ -252,18 +255,21 @@ class Game(
      * Starts the game.
      *
      * Requires at least 2 connected players. Transitions from
-     * WAITING_FOR_PLAYERS to PLACING_MARBLES phase.
+     * WAITING_FOR_PLAYERS to PLACING_MARBLES phase. The starting player
+     * is randomly selected from connected active players.
      *
      * @return `true` if game started successfully, `false` if not enough players
      */
     fun startGame(): Boolean {
         touch()
-        val connectedPlayers = players.values.count { it.connected }
-        if (connectedPlayers < 2) return false
+        val connectedPlayerIndices = playerOrder.indices.filter { index ->
+            val player = players[playerOrder[index]]
+            player != null && player.connected && !player.isSpectator
+        }
+        if (connectedPlayerIndices.size < 2) return false
 
         phase = GamePhase.PLACING_MARBLES
-        currentPlayerIndex = 0
-        advanceToNextActivePlayer()
+        currentPlayerIndex = connectedPlayerIndices.random(random)
         return true
     }
 

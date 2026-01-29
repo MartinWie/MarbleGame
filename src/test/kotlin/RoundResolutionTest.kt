@@ -4,7 +4,7 @@ import kotlin.test.*
 
 class RoundResolutionTest {
     private fun createGameWithPlayers(vararg names: String): Game {
-        val game = Game(creatorSessionId = "creator")
+        val game = Game(creatorSessionId = "creator", random = kotlin.random.Random(1))
         names.forEachIndexed { index, name ->
             val sessionId = if (index == 0) "creator" else "player$index"
             game.addPlayer(sessionId, name).also { it.connected = true }
@@ -136,7 +136,6 @@ class RoundResolutionTest {
         assertEquals(8, game.players["creator"]!!.marbles)
     }
 
-
     @Test
     fun `placer with insufficient marbles pays what they have to winners`() {
         val game = createGameWithPlayers("Alice", "Bob", "Charlie", "Dave")
@@ -264,7 +263,6 @@ class RoundResolutionTest {
         assertEquals(10, game.players["creator"]!!.marbles) // Alice: 10 - 4 + 4 = 10
     }
 
-
     @Test
     fun `mixed winners and losers - all losers pay placer independently`() {
         val game = createGameWithPlayers("Alice", "Bob", "Charlie", "Dave", "Eve")
@@ -297,7 +295,6 @@ class RoundResolutionTest {
         // Net: 10 - 2 + 6 = 14
         assertEquals(14, game.players["creator"]!!.marbles)
     }
-
 
     @Test
     fun `loser with insufficient marbles pays what they have when there are also winners`() {
@@ -436,13 +433,15 @@ class RoundResolutionTest {
     @Test
     fun `round with no guessers resolves immediately with no marble changes`() {
         val game = createGameWithPlayers("Alice", "Bob")
-        game.players["player1"]!!.marbles = 0 // Bob is spectator
 
         game.startGame()
 
+        // Make Bob a spectator after game starts
+        game.players["player1"]!!.marbles = 0
+
         val aliceMarblesBefore = game.players["creator"]!!.marbles
 
-        // Alice places marbles - no one can guess
+        // Alice places marbles - no one can guess (Bob is spectator)
         game.placeMarbles("creator", 3)
 
         // Should be immediately resolvable

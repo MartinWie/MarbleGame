@@ -4,7 +4,7 @@ import kotlin.test.*
 
 class DisconnectHandlingTest {
     private fun createGameWithPlayers(vararg names: String): Game {
-        val game = Game(creatorSessionId = "creator")
+        val game = Game(creatorSessionId = "creator", random = kotlin.random.Random(1))
         names.forEachIndexed { index, name ->
             val sessionId = if (index == 0) "creator" else "player$index"
             game.addPlayer(sessionId, name).also { it.connected = true }

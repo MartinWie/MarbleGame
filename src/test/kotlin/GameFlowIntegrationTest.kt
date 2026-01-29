@@ -8,7 +8,7 @@ import kotlin.test.*
  */
 class GameFlowIntegrationTest {
     private fun createGameWithPlayers(vararg names: String): Game {
-        val game = Game(creatorSessionId = "creator")
+        val game = Game(creatorSessionId = "creator", random = kotlin.random.Random(1))
         names.forEachIndexed { index, name ->
             val sessionId = if (index == 0) "creator" else "player$index"
             game.addPlayer(sessionId, name).also { it.connected = true }
@@ -226,12 +226,14 @@ class GameFlowIntegrationTest {
     @Test
     fun `game auto-resolves when all other players are spectators`() {
         val game = createGameWithPlayers("Alice", "Bob")
-        game.players["player1"]!!.marbles = 0 // Bob is spectator
 
         game.startGame()
         assertEquals("Alice", game.currentPlayer?.name)
 
-        // Alice places marbles - no one can guess
+        // Make Bob a spectator after game starts
+        game.players["player1"]!!.marbles = 0
+
+        // Alice places marbles - no one can guess (Bob is spectator)
         game.placeMarbles("creator", 3)
 
         // Should immediately be resolvable (no guessers = all guessed)

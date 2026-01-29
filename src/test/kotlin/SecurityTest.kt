@@ -4,7 +4,7 @@ import kotlin.test.*
 
 class SecurityTest {
     private fun createGameWithPlayers(vararg names: String): Game {
-        val game = Game(creatorSessionId = "creator")
+        val game = Game(creatorSessionId = "creator", random = kotlin.random.Random(1))
         names.forEachIndexed { index, name ->
             val sessionId = if (index == 0) "creator" else "player$index"
             game.addPlayer(sessionId, name).also { it.connected = true }
@@ -48,7 +48,7 @@ class SecurityTest {
 
     @Test
     fun `round result stores placer name correctly for later escaping`() {
-        val game = Game(creatorSessionId = "creator")
+        val game = Game(creatorSessionId = "creator", random = kotlin.random.Random(1))
         val maliciousName = "<script>evil()</script>"
         game.addPlayer("creator", maliciousName).connected = true
         game.addPlayer("player1", "Bob").connected = true
@@ -65,7 +65,7 @@ class SecurityTest {
 
     @Test
     fun `round result stores winner names correctly for later escaping`() {
-        val game = Game(creatorSessionId = "creator")
+        val game = Game(creatorSessionId = "creator", random = kotlin.random.Random(1))
         val maliciousName = "<b onmouseover=alert('xss')>hover me</b>"
         game.addPlayer("creator", "Alice").connected = true
         game.addPlayer("player1", maliciousName).connected = true
@@ -81,7 +81,7 @@ class SecurityTest {
 
     @Test
     fun `round result stores loser names correctly for later escaping`() {
-        val game = Game(creatorSessionId = "creator")
+        val game = Game(creatorSessionId = "creator", random = kotlin.random.Random(1))
         val maliciousName = "<iframe src='evil.com'></iframe>"
         game.addPlayer("creator", "Alice").connected = true
         game.addPlayer("player1", maliciousName).connected = true
