@@ -136,6 +136,43 @@ class RoundResolutionTest {
         assertEquals(8, game.players["creator"]!!.marbles)
     }
 
+
+    @Test
+    fun `placer with insufficient marbles pays what they have to winners`() {
+        val game = createGameWithPlayers("Alice", "Bob", "Charlie", "Dave")
+        game.addPlayer("player3", "Dave").connected = true
+
+        // Alice places 6 marbles (she has 10, so this is valid)
+        // 3 winners would each get 6/3 = 2 marbles
+        // But we'll set Alice to have fewer marbles after placing (simulating edge case)
+        game.startGame()
+        game.placeMarbles("creator", 6) // Alice bets 6
+
+        // Reduce Alice's marbles to test the safety bounds
+        // (In normal gameplay this can't happen mid-round)
+        game.players["creator"]!!.marbles = 4 // Alice only has 4 now
+
+        game.makeGuess("player1", Guess.EVEN) // Bob correct (6 is even)
+        game.makeGuess("player2", Guess.EVEN) // Charlie correct
+        game.makeGuess("player3", Guess.EVEN) // Dave correct
+
+        game.resolveRound()
+
+        // marblesWonPerWinner = 6/3 = 2
+        // totalPayout = 2*3 = 6
+        // marblesLostByPlacer = min(6, 4) = 4
+        // actualPerWinner = 4/3 = 1 (integer division)
+        // Each winner gets 1, total distributed = 3
+        // Note: 1 marble is "lost" to rounding when placer can't fully pay
+
+        assertEquals(0, game.players["creator"]!!.marbles) // Alice: 4 - 4 = 0
+        assertEquals(11, game.players["player1"]!!.marbles) // Bob: 10 + 1 = 11
+        assertEquals(11, game.players["player2"]!!.marbles) // Charlie: 10 + 1 = 11
+        assertEquals(11, game.players["player3"]!!.marbles) // Dave: 10 + 1 = 11
+        // Total: 0 + 11 + 11 + 11 = 33 (was 4 + 10 + 10 + 10 = 34)
+        // 1 marble lost to double rounding - acceptable for this edge case
+    }
+
     // ==================== Loser Pays Placer ====================
 
     @Test
@@ -198,7 +235,7 @@ class RoundResolutionTest {
     // ==================== Mixed Winners and Losers ====================
 
     @Test
-    fun `some winners some losers - only winners get marbles`() {
+    fun `some winners some losers - winners get marbles and losers lose marbles`() {
         val game = createGameWithPlayers("Alice", "Bob", "Charlie", "Dave")
 
         // Add Dave manually
@@ -219,12 +256,66 @@ class RoundResolutionTest {
         assertTrue(result.losers.contains("Charlie"))
 
         // Winners split the 4 marbles = 2 each
-        assertEquals(12, game.players["player1"]!!.marbles)
-        assertEquals(12, game.players["player3"]!!.marbles)
-        // Charlie doesn't lose anything (only losers pay when ALL guess wrong)
-        assertEquals(10, game.players["player2"]!!.marbles)
-        // Alice loses 4
-        assertEquals(6, game.players["creator"]!!.marbles)
+        assertEquals(12, game.players["player1"]!!.marbles) // Bob: 10 + 2 = 12
+        assertEquals(12, game.players["player3"]!!.marbles) // Dave: 10 + 2 = 12
+        // Charlie loses 4 marbles to placer (wrong guess)
+        assertEquals(6, game.players["player2"]!!.marbles) // Charlie: 10 - 4 = 6
+        // Alice loses 4 to winners but gains 4 from Charlie = net 0
+        assertEquals(10, game.players["creator"]!!.marbles) // Alice: 10 - 4 + 4 = 10
+    }
+
+
+    @Test
+    fun `mixed winners and losers - all losers pay placer independently`() {
+        val game = createGameWithPlayers("Alice", "Bob", "Charlie", "Dave", "Eve")
+
+        // Add extra players
+        game.addPlayer("player3", "Dave").connected = true
+        game.addPlayer("player4", "Eve").connected = true
+
+        setupGuessing(game, 3) // Odd
+        game.makeGuess("player1", Guess.ODD) // Bob correct
+        game.makeGuess("player2", Guess.EVEN) // Charlie wrong
+        game.makeGuess("player3", Guess.EVEN) // Dave wrong
+        game.makeGuess("player4", Guess.ODD) // Eve correct
+
+        val result = game.resolveRound()
+
+        assertNotNull(result)
+        assertEquals(2, result.winners.size)
+        assertEquals(2, result.losers.size)
+
+        // Winners split 3 marbles = 1 each (integer division)
+        assertEquals(11, game.players["player1"]!!.marbles) // Bob: 10 + 1 = 11
+        assertEquals(11, game.players["player4"]!!.marbles) // Eve: 10 + 1 = 11
+
+        // Both losers pay 3 marbles each to placer
+        assertEquals(7, game.players["player2"]!!.marbles) // Charlie: 10 - 3 = 7
+        assertEquals(7, game.players["player3"]!!.marbles) // Dave: 10 - 3 = 7
+
+        // Alice loses 2 to winners (1 each, rounded down from 3/2) but gains 6 from losers (3 each)
+        // Net: 10 - 2 + 6 = 14
+        assertEquals(14, game.players["creator"]!!.marbles)
+    }
+
+
+    @Test
+    fun `loser with insufficient marbles pays what they have when there are also winners`() {
+        val game = createGameWithPlayers("Alice", "Bob", "Charlie")
+        game.players["player2"]!!.marbles = 2 // Charlie only has 2 marbles
+
+        setupGuessing(game, 5) // Odd
+        game.makeGuess("player1", Guess.ODD) // Bob correct
+        game.makeGuess("player2", Guess.EVEN) // Charlie wrong
+
+        game.resolveRound()
+
+        // Bob wins 5 marbles from Alice
+        assertEquals(15, game.players["player1"]!!.marbles) // Bob: 10 + 5 = 15
+        // Charlie loses all 2 marbles (all he has)
+        assertEquals(0, game.players["player2"]!!.marbles) // Charlie: 2 - 2 = 0
+        // Alice loses 5 to Bob, gains 2 from Charlie = net -3
+        assertEquals(7, game.players["creator"]!!.marbles) // Alice: 10 - 5 + 2 = 7
     }
 
     // ==================== Phase Transition ====================

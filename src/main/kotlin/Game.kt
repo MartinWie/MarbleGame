@@ -329,7 +329,7 @@ class Game(
      * Resolves the current round and distributes marbles.
      *
      * - Correct guessers split the placed marbles from the placer
-     * - If no correct guesses, placer wins marbles from each wrong guesser
+     * - Wrong guessers lose marbles equal to the placed amount to the placer
      *
      * @return The round result, or null if not in GUESSING phase
      */
@@ -351,9 +351,10 @@ class Game(
 
         var marblesWonPerWinner = 0
         var marblesLostByPlacer = 0
+        var marblesGainedFromLosers = 0
 
+        // Winners split the placed marbles from the placer
         if (winners.isNotEmpty()) {
-            // Winners split the placed marbles
             marblesWonPerWinner = currentMarblesPlaced / winners.size
             val totalPayout = marblesWonPerWinner * winners.size
             marblesLostByPlacer = minOf(totalPayout, placer.marbles)
@@ -361,15 +362,20 @@ class Game(
 
             val actualPerWinner = marblesLostByPlacer / winners.size
             winners.forEach { it.marbles += actualPerWinner }
-        } else if (losers.isNotEmpty()) {
-            // All guessers were wrong - placer wins from each loser
-            losers.forEach { loser ->
-                val winAmount = minOf(currentMarblesPlaced, loser.marbles)
-                loser.marbles -= winAmount
-                placer.marbles += winAmount
-            }
-            marblesLostByPlacer = -losers.sumOf { minOf(currentMarblesPlaced, it.marbles + currentMarblesPlaced) }
         }
+
+        // Losers always lose marbles to the placer (regardless of whether there are winners)
+        if (losers.isNotEmpty()) {
+            losers.forEach { loser ->
+                val lossAmount = minOf(currentMarblesPlaced, loser.marbles)
+                loser.marbles -= lossAmount
+                placer.marbles += lossAmount
+                marblesGainedFromLosers += lossAmount
+            }
+        }
+
+        // Net marbles lost by placer (negative means gained)
+        val netMarblesLostByPlacer = marblesLostByPlacer - marblesGainedFromLosers
 
         lastRoundResult =
             RoundResult(
@@ -379,7 +385,7 @@ class Game(
                 winners = winners.map { it.name },
                 losers = losers.map { it.name },
                 marblesWonPerWinner = marblesWonPerWinner,
-                marblesLostByPlacer = marblesLostByPlacer,
+                marblesLostByPlacer = netMarblesLostByPlacer,
             )
 
         phase = GamePhase.ROUND_RESULT
