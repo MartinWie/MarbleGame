@@ -29,13 +29,24 @@ body {
     min-height: 100vh;
     min-height: 100dvh;
     margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Wrapper for main content - fills at least full viewport height */
+.page-wrapper {
+    min-height: 100vh;
+    min-height: 100dvh; /* Dynamic viewport height for mobile */
+    display: flex;
+    flex-direction: column;
     padding: 16px;
-    padding-bottom: 100px;
 }
 
 .container {
     max-width: 500px;
     margin: 0 auto;
+    width: 100%;
 }
 
 /* Typography */
@@ -935,20 +946,71 @@ input::placeholder {
     }
 }
 
-/* Dark mode scrollbar */
-::-webkit-scrollbar {
-    width: 8px;
+/* Hide scrollbar but keep scrolling functional */
+html {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
 }
 
-::-webkit-scrollbar-track {
-    background: var(--bg-dark);
+html::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
 }
 
-::-webkit-scrollbar-thumb {
-    background: var(--text-muted);
-    border-radius: 4px;
+/* Page footer - hidden below fold, user needs to scroll to see it */
+#page-footer {
+    text-align: center;
+    padding: 32px 20px;
+    padding-bottom: calc(32px + 80px); /* Extra padding to clear fixed status bar */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-    background: var(--text-secondary);
+#page-footer .footer-links {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+#page-footer a {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+#page-footer a:hover {
+    color: var(--accent-blue);
+    text-decoration: none;
+}
+
+#page-footer .support-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #ffdd00;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 8px;
+    background: rgba(255, 221, 0, 0.1);
+    transition: all 0.2s ease;
+}
+
+#page-footer .support-link:hover {
+    color: #ffdd00;
+    background: rgba(255, 221, 0, 0.2);
+}
+
+#page-footer .support-link img {
+    width: 20px;
+    height: 20px;
+}
+
+#page-footer .separator {
+    color: var(--text-muted);
+    opacity: 0.5;
+    font-size: 0.7rem;
 }

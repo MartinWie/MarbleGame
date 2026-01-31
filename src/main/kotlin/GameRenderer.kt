@@ -177,6 +177,31 @@ internal fun BODY.cookieConsentBanner(lang: String) {
 }
 
 /**
+ * Renders the footer with links.
+ *
+ * @param lang The language code for translations.
+ */
+internal fun BODY.pageFooter(lang: String) {
+    footer {
+        id = "page-footer"
+        div("footer-links") {
+            a(href = "/") { +"footer.newGame".t(lang) }
+            span("separator") { +"•" }
+            a(href = "/imprint") { +"footer.imprint".t(lang) }
+            span("separator") { +"•" }
+            a(href = "/privacy") { +"footer.privacy".t(lang) }
+        }
+        a(href = "https://www.buymeacoffee.com/martinwie", target = "_blank", classes = "support-link") {
+            img(src = "/static/svg/buymeacoffee.svg", alt = "Buy Me a Coffee") {
+                attributes["width"] = "20"
+                attributes["height"] = "20"
+            }
+            +"footer.support".t(lang)
+        }
+    }
+}
+
+/**
  * Renders the main game page HTML structure.
  *
  * This function generates the complete HTML page for the game, including:
@@ -222,65 +247,66 @@ fun HTML.renderGamePage(
         posthogScript()
     }
     body {
-        div("container") {
-            div("header") {
-                h1 { +"game.title".t(lang) }
-                button {
-                    id = "share-btn"
-                    attributes["data-share-text"] = "button.share".t(lang)
-                    attributes["data-copied-text"] = "button.copied".t(lang)
-                    attributes["onclick"] =
-                        """
-                        var btn = this;
-                        var url = window.location.origin + '/game/${game.id}/join';
-                        function showCopied() {
-                            btn.textContent = btn.dataset.copiedText;
-                            btn.classList.add('copied');
-                            setTimeout(function() { btn.textContent = btn.dataset.shareText; btn.classList.remove('copied'); }, 2000);
-                        }
-                        function fallbackCopy() {
-                            var ta = document.createElement('textarea');
-                            ta.value = url;
-                            ta.style.position = 'fixed';
-                            ta.style.left = '-9999px';
-                            document.body.appendChild(ta);
-                            ta.focus();
-                            ta.select();
-                            ta.setSelectionRange(0, 99999);
-                            try { document.execCommand('copy'); showCopied(); } catch(e) { prompt('Copy this link:', url); }
-                            document.body.removeChild(ta);
-                        }
-                        function clipboardCopy() {
-                            if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
-                                navigator.clipboard.writeText(url).then(showCopied).catch(fallbackCopy);
-                            } else {
-                                fallbackCopy();
+        div("page-wrapper") {
+            div("container") {
+                div("header") {
+                    h1 { +"game.title".t(lang) }
+                    button {
+                        id = "share-btn"
+                        attributes["data-share-text"] = "button.share".t(lang)
+                        attributes["data-copied-text"] = "button.copied".t(lang)
+                        attributes["onclick"] =
+                            """
+                            var btn = this;
+                            var url = window.location.origin + '/game/${game.id}/join';
+                            function showCopied() {
+                                btn.textContent = btn.dataset.copiedText;
+                                btn.classList.add('copied');
+                                setTimeout(function() { btn.textContent = btn.dataset.shareText; btn.classList.remove('copied'); }, 2000);
                             }
-                        }
-                        var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-                        if (isMobile && navigator.share) {
-                            navigator.share({ title: '${"game.title".t(
-                            lang,
-                        )}', text: '${"share.text".t(lang)}', url: url }).catch(function() {});
-                        } else {
-                            clipboardCopy();
-                        }
-                        """.trimIndent().replace("\n", " ")
-                    +"button.share".t(lang)
+                            function fallbackCopy() {
+                                var ta = document.createElement('textarea');
+                                ta.value = url;
+                                ta.style.position = 'fixed';
+                                ta.style.left = '-9999px';
+                                document.body.appendChild(ta);
+                                ta.focus();
+                                ta.select();
+                                ta.setSelectionRange(0, 99999);
+                                try { document.execCommand('copy'); showCopied(); } catch(e) { prompt('Copy this link:', url); }
+                                document.body.removeChild(ta);
+                            }
+                            function clipboardCopy() {
+                                if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+                                    navigator.clipboard.writeText(url).then(showCopied).catch(fallbackCopy);
+                                } else {
+                                    fallbackCopy();
+                                }
+                            }
+                            var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                            if (isMobile && navigator.share) {
+                                navigator.share({ title: '${"game.title".t(
+                                lang,
+                            )}', text: '${"share.text".t(lang)}', url: url }).catch(function() {});
+                            } else {
+                                clipboardCopy();
+                            }
+                            """.trimIndent().replace("\n", " ")
+                        +"button.share".t(lang)
+                    }
+                }
+
+                div {
+                    id = "game-content"
+                    // Initial content
+                    unsafe { +renderGameState(game, sessionId, lang) }
                 }
             }
 
-            div {
-                id = "game-content"
-                // Initial content
-                unsafe { +renderGameState(game, sessionId, lang) }
-            }
-        }
-
-        // Use standard EventSource for SSE with ping/reconnect handling
-        script {
-            unsafe {
-                +"""
+            // Use standard EventSource for SSE with ping/reconnect handling
+            script {
+                unsafe {
+                    +"""
                 (function() {
                     // Update URL to include game ID (for bookmarking/sharing)
                     if (window.location.pathname !== '/game/${game.id}') {
@@ -569,8 +595,12 @@ fun HTML.renderGamePage(
                     });
                 })();
                 """
+                }
             }
-        }
+        } // Close page-wrapper
+
+        // Footer
+        pageFooter(lang)
 
         // Cookie consent banner
         cookieConsentBanner(lang)

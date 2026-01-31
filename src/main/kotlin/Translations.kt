@@ -96,6 +96,55 @@ object Translations {
                     "cookie.message" to "We use cookies to analyze site usage and improve your experience.",
                     "cookie.accept" to "Accept",
                     "cookie.reject" to "Reject",
+                    // Footer
+                    "footer.newGame" to "New Game",
+                    "footer.imprint" to "Imprint",
+                    "footer.privacy" to "Privacy Policy",
+                    "footer.support" to "Support",
+                    // Imprint page
+                    "imprint.headline" to "Information according to § 5 TMG",
+                    "imprint.hobbyProject" to "This is a private, non-commercial hobby project.",
+                    "imprint.contact" to "Contact",
+                    "imprint.email" to "Email: info-7mw@googlegroups.com",
+                    "imprint.liabilityContent" to "Liability for Content",
+                    "imprint.liabilityContentText" to
+                        "As a service provider, we are responsible for our own content on these pages in accordance with § 7 para.1 TMG. The contents have been created with the utmost care. However, no guarantee can be given for the accuracy, completeness and timeliness of the content.",
+                    "imprint.liabilityLinks" to "Liability for Links",
+                    "imprint.liabilityLinksText" to
+                        "This website contains links to external third-party websites over whose content we have no influence. The respective provider is always responsible for the content of the linked pages.",
+                    // Privacy page
+                    "privacy.headline" to "Privacy Policy",
+                    "privacy.controller" to "1. Data Controller",
+                    "privacy.controllerText" to "Responsible for data processing on this website:",
+                    "privacy.controllerEmail" to "Email: info-7mw@googlegroups.com",
+                    "privacy.hobbyProject" to "This is a private, non-commercial hobby project.",
+                    "privacy.dataCollected" to "2. Data Collected",
+                    "privacy.dataCollectedText" to "This website processes the following data:",
+                    "privacy.dataSession" to
+                        "Session cookies: Technically necessary for game functionality. Deleted when browser is closed.",
+                    "privacy.dataPlayer" to "Player name: Only stored temporarily in memory during gameplay, not persisted.",
+                    "privacy.dataAnalytics" to "Usage statistics: Only with your explicit consent via PostHog (servers in the EU).",
+                    "privacy.legalBasis" to "3. Legal Basis",
+                    "privacy.legalBasisText" to "Processing is based on:",
+                    "privacy.legalBasisNecessary" to "Art. 6(1)(f) GDPR (legitimate interest) for technically necessary cookies",
+                    "privacy.legalBasisConsent" to "Art. 6(1)(a) GDPR (consent) for analytics cookies",
+                    "privacy.retention" to "4. Retention Period",
+                    "privacy.retentionText" to
+                        "Session data is deleted when you close the browser. Player names are deleted when the game ends. Analytics data is stored according to PostHog policies.",
+                    "privacy.rights" to "5. Your Rights",
+                    "privacy.rightsText" to "You have the following rights:",
+                    "privacy.rightsAccess" to "Access to your stored data (Art. 15 GDPR)",
+                    "privacy.rightsRectification" to "Rectification of inaccurate data (Art. 16 GDPR)",
+                    "privacy.rightsErasure" to "Erasure of your data (Art. 17 GDPR)",
+                    "privacy.rightsRestriction" to "Restriction of processing (Art. 18 GDPR)",
+                    "privacy.rightsWithdraw" to "Withdraw consent at any time (Art. 7 GDPR)",
+                    "privacy.rightsComplaint" to "Lodge a complaint with a supervisory authority (Art. 77 GDPR)",
+                    "privacy.cookies" to "6. Cookies",
+                    "privacy.cookiesText" to
+                        "We use technically necessary session cookies for game functionality. Analytics cookies (PostHog) are only set with your explicit consent. You can withdraw your consent at any time.",
+                    "privacy.thirdParties" to "7. Third Parties",
+                    "privacy.thirdPartiesText" to
+                        "PostHog (Analytics): Data is processed on servers in the European Union. More information: posthog.com/privacy",
                 ),
             "de" to
                 mapOf(
@@ -182,6 +231,57 @@ object Translations {
                     "cookie.message" to "Wir nutzen Cookies zur Analyse und Verbesserung der Website.",
                     "cookie.accept" to "Akzeptieren",
                     "cookie.reject" to "Ablehnen",
+                    // Footer
+                    "footer.newGame" to "Neues Spiel",
+                    "footer.imprint" to "Impressum",
+                    "footer.privacy" to "Datenschutz",
+                    "footer.support" to "Unterstützen",
+                    // Imprint page
+                    "imprint.headline" to "Angaben gemäß § 5 TMG",
+                    "imprint.hobbyProject" to "Dies ist ein privates, nicht-kommerzielles Hobbyprojekt.",
+                    "imprint.contact" to "Kontakt",
+                    "imprint.email" to "E-Mail: info-7mw@googlegroups.com",
+                    "imprint.liabilityContent" to "Haftung für Inhalte",
+                    "imprint.liabilityContentText" to
+                        "Als Diensteanbieter sind wir gemäß § 7 Abs.1 TMG für eigene Inhalte auf diesen Seiten nach den allgemeinen Gesetzen verantwortlich. Die Inhalte wurden mit größter Sorgfalt erstellt. Für die Richtigkeit, Vollständigkeit und Aktualität der Inhalte kann jedoch keine Gewähr übernommen werden.",
+                    "imprint.liabilityLinks" to "Haftung für Links",
+                    "imprint.liabilityLinksText" to
+                        "Diese Website enthält Links zu externen Websites Dritter, auf deren Inhalte wir keinen Einfluss haben. Für die Inhalte der verlinkten Seiten ist stets der jeweilige Anbieter verantwortlich.",
+                    // Privacy page
+                    "privacy.headline" to "Datenschutzerklärung",
+                    "privacy.controller" to "1. Verantwortlicher",
+                    "privacy.controllerText" to "Verantwortlich für die Datenverarbeitung auf dieser Website:",
+                    "privacy.controllerEmail" to "E-Mail: info-7mw@googlegroups.com",
+                    "privacy.hobbyProject" to "Dies ist ein privates, nicht-kommerzielles Hobbyprojekt.",
+                    "privacy.dataCollected" to "2. Erhobene Daten",
+                    "privacy.dataCollectedText" to "Diese Website verarbeitet folgende Daten:",
+                    "privacy.dataSession" to
+                        "Session-Cookies: Technisch notwendig für die Spielfunktion. Werden nach Schließen des Browsers gelöscht.",
+                    "privacy.dataPlayer" to
+                        "Spielername: Wird nur temporär während des Spiels im Arbeitsspeicher gespeichert, nicht dauerhaft.",
+                    "privacy.dataAnalytics" to
+                        "Nutzungsstatistiken: Nur mit Ihrer ausdrücklichen Zustimmung via PostHog (Server in der EU).",
+                    "privacy.legalBasis" to "3. Rechtsgrundlage",
+                    "privacy.legalBasisText" to "Die Verarbeitung erfolgt auf Basis von:",
+                    "privacy.legalBasisNecessary" to "Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse) für technisch notwendige Cookies",
+                    "privacy.legalBasisConsent" to "Art. 6 Abs. 1 lit. a DSGVO (Einwilligung) für Analyse-Cookies",
+                    "privacy.retention" to "4. Speicherdauer",
+                    "privacy.retentionText" to
+                        "Session-Daten werden gelöscht, wenn Sie den Browser schließen. Spielnamen werden gelöscht, wenn das Spiel endet. Analyse-Daten werden gemäß PostHog-Richtlinien gespeichert.",
+                    "privacy.rights" to "5. Ihre Rechte",
+                    "privacy.rightsText" to "Sie haben folgende Rechte:",
+                    "privacy.rightsAccess" to "Auskunft über Ihre gespeicherten Daten (Art. 15 DSGVO)",
+                    "privacy.rightsRectification" to "Berichtigung unrichtiger Daten (Art. 16 DSGVO)",
+                    "privacy.rightsErasure" to "Löschung Ihrer Daten (Art. 17 DSGVO)",
+                    "privacy.rightsRestriction" to "Einschränkung der Verarbeitung (Art. 18 DSGVO)",
+                    "privacy.rightsWithdraw" to "Widerruf Ihrer Einwilligung jederzeit (Art. 7 DSGVO)",
+                    "privacy.rightsComplaint" to "Beschwerde bei einer Aufsichtsbehörde (Art. 77 DSGVO)",
+                    "privacy.cookies" to "6. Cookies",
+                    "privacy.cookiesText" to
+                        "Wir verwenden technisch notwendige Session-Cookies für die Spielfunktion. Analyse-Cookies (PostHog) werden nur mit Ihrer ausdrücklichen Zustimmung gesetzt. Sie können Ihre Einwilligung jederzeit widerrufen.",
+                    "privacy.thirdParties" to "7. Drittanbieter",
+                    "privacy.thirdPartiesText" to
+                        "PostHog (Analyse): Daten werden auf Servern in der Europäischen Union verarbeitet. Mehr Informationen: posthog.com/privacy",
                 ),
         )
 
