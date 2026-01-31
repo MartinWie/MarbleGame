@@ -3,6 +3,9 @@ package de.mw
 import kotlin.test.*
 
 class GameTest {
+    // Grace period + buffer to ensure it's expired
+    private val gracePeriodExpiredMs = DISCONNECT_GRACE_PERIOD_MS + 1000
+
     private fun createGameWithPlayers(vararg names: String): Game {
         val game = Game(creatorSessionId = "creator", random = kotlin.random.Random(1))
         names.forEachIndexed { index, name ->
@@ -399,7 +402,7 @@ class GameTest {
 
         // Simulate Bob disconnecting and grace period expiring
         game.handlePlayerDisconnect("player1")
-        game.players["player1"]!!.disconnectedAt = System.currentTimeMillis() - 31_000
+        game.players["player1"]!!.disconnectedAt = System.currentTimeMillis() - gracePeriodExpiredMs
         game.handleGracePeriodExpired("player1")
 
         // Bob should be removed from playerOrder
@@ -475,7 +478,7 @@ class GameTest {
 
         // Simulate disconnect and grace period expiry
         game.handlePlayerDisconnect("player1")
-        game.players["player1"]!!.disconnectedAt = System.currentTimeMillis() - 20_000
+        game.players["player1"]!!.disconnectedAt = System.currentTimeMillis() - gracePeriodExpiredMs
 
         val changed = game.handleGracePeriodExpired("player1")
 
@@ -483,6 +486,45 @@ class GameTest {
         assertFalse(changed)
         assertEquals(2, game.allPlayers.size)
         assertNotNull(game.allPlayers.find { it.sessionId == "player1" })
+    }
+
+    @Test
+    fun `handleGracePeriodExpired transfers creator in WAITING_FOR_PLAYERS phase`() {
+        val game = createGameWithPlayers("Alice", "Bob")
+        // Game is in WAITING_FOR_PLAYERS phase
+        assertEquals(GamePhase.WAITING_FOR_PLAYERS, game.phase)
+
+        // Creator (Alice) disconnects and grace period expires
+        game.handlePlayerDisconnect("creator")
+        game.players["creator"]!!.disconnectedAt = System.currentTimeMillis() - gracePeriodExpiredMs
+
+        val changed = game.handleGracePeriodExpired("creator")
+
+        // Creator should transfer to Bob
+        assertTrue(changed)
+        assertEquals("player1", game.creatorSessionId)
+        // But creator (Alice) should still be in the game (can reconnect)
+        assertEquals(2, game.allPlayers.size)
+        assertNotNull(game.allPlayers.find { it.sessionId == "creator" })
+    }
+
+    @Test
+    fun `handleGracePeriodExpired does not transfer creator when no other connected players in lobby`() {
+        val game = createGameWithPlayers("Alice", "Bob")
+        assertEquals(GamePhase.WAITING_FOR_PLAYERS, game.phase)
+
+        // Both players disconnect
+        game.handlePlayerDisconnect("creator")
+        game.handlePlayerDisconnect("player1")
+        game.players["creator"]!!.disconnectedAt = System.currentTimeMillis() - gracePeriodExpiredMs
+
+        val changed = game.handleGracePeriodExpired("creator")
+
+        // Should not transfer (no connected players)
+        assertFalse(changed)
+        assertEquals("creator", game.creatorSessionId) // Still original creator
+        // Both players should still exist
+        assertEquals(2, game.allPlayers.size)
     }
 
     @Test
@@ -496,7 +538,7 @@ class GameTest {
 
         // Creator disconnects
         game.handlePlayerDisconnect("creator")
-        game.players["creator"]!!.disconnectedAt = System.currentTimeMillis() - 20_000
+        game.players["creator"]!!.disconnectedAt = System.currentTimeMillis() - gracePeriodExpiredMs
 
         val changed = game.handleGracePeriodExpired("creator")
 
@@ -515,7 +557,7 @@ class GameTest {
 
         // Bob disconnects and grace period expires
         game.handlePlayerDisconnect("player1")
-        game.players["player1"]!!.disconnectedAt = System.currentTimeMillis() - 20_000
+        game.players["player1"]!!.disconnectedAt = System.currentTimeMillis() - gracePeriodExpiredMs
 
         val changed = game.handleGracePeriodExpired("player1")
 
@@ -588,7 +630,7 @@ class GameTest {
 
         // Alice (creator) disconnects
         game.handlePlayerDisconnect("creator")
-        game.players["creator"]!!.disconnectedAt = System.currentTimeMillis() - 20_000
+        game.players["creator"]!!.disconnectedAt = System.currentTimeMillis() - gracePeriodExpiredMs
         game.handleGracePeriodExpired("creator")
 
         // Bob should now be creator

@@ -1,0 +1,33 @@
+{
+  "name": "marblegame",
+  "version": "1.0.0",
+  "description": "A real-time multiplayer marble game inspired by the Korean drama \"Squid Game\". Built with Kotlin/Ktor using Server-Sent Events (SSE) for instant updates.",
+  "main": "index.js",
+  "scripts": {
+    "test": "./gradlew test && npm run test:e2e:fast",
+    "test:all": "./gradlew test && npm run test:e2e",
+    "test:e2e": "playwright test",
+    "test:e2e:fast": "playwright test --grep-invert @slow",
+    "test:e2e:fast:headed": "playwright test --grep-invert @slow --headed",
+    "test:e2e:slow": "playwright test --grep @slow",
+    "test:e2e:slow:headed": "playwright test --grep @slow --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MartinWie/MarbleGame.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/MartinWie/MarbleGame/issues"
+  },
+  "homepage": "https://github.com/MartinWie/MarbleGame#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.58.1"
+  }
+}

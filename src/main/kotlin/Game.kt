@@ -591,8 +591,18 @@ class Game(
 
         if (player.connected || player.isWithinGracePeriod()) return false
 
-        // In lobby, don't remove disconnected players - they can reconnect anytime
-        if (phase == GamePhase.WAITING_FOR_PLAYERS) return false
+        // In lobby, transfer creator if needed but don't remove player (they can reconnect)
+        if (phase == GamePhase.WAITING_FOR_PLAYERS) {
+            if (sessionId == creatorSessionId) {
+                val newCreator = players.values.firstOrNull { it.connected && it.sessionId != sessionId }
+                if (newCreator != null) {
+                    creatorSessionId = newCreator.sessionId
+                    logger.info("Game {} creator transferred to '{}' (lobby)", id, newCreator.name)
+                    return true
+                }
+            }
+            return false
+        }
 
         // In game over, only transfer creator if needed (don't remove player)
         if (phase == GamePhase.GAME_OVER) {
@@ -600,7 +610,7 @@ class Game(
                 val newCreator = players.values.firstOrNull { it.connected && it.sessionId != sessionId }
                 if (newCreator != null) {
                     creatorSessionId = newCreator.sessionId
-                    logger.info("Game {} creator transferred to '{}'", id, newCreator.name)
+                    logger.info("Game {} creator transferred to '{}' (game over)", id, newCreator.name)
                     return true
                 }
             }

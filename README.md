@@ -58,6 +58,19 @@ docker stop marble-game
 open http://localhost:8080
 ```
 
+### Development Scripts
+
+For local development, use the provided scripts that automatically disable analytics:
+
+```bash
+./dev-start.sh   # Start dev server in background (PostHog disabled)
+./dev-stop.sh    # Stop the dev server
+./dev-reload.sh  # Restart the dev server (after code changes)
+
+# View server logs
+tail -f dev-server.log
+```
+
 ## How to Play
 
 1. Open the game in your browser
@@ -70,11 +83,78 @@ open http://localhost:8080
 
 | Task | Description |
 |------|-------------|
-| `./gradlew run` | Run the development server |
+| `./dev-start.sh` | Start dev server with analytics disabled |
+| `./dev-stop.sh` | Stop the dev server |
+| `./dev-reload.sh` | Restart the dev server |
+| `./gradlew run` | Run the server (with analytics enabled) |
 | `./gradlew build` | Build everything |
 | `./gradlew shadowJar` | Build executable JAR with all dependencies |
-| `./gradlew test` | Run tests |
+| `./gradlew test` | Run unit tests |
+| `npm run test:e2e` | Run E2E tests (Playwright) |
 | `docker build -t marble-game .` | Build Docker image (~221MB) |
+
+## Testing
+
+Run all tests with a single command:
+
+```bash
+./test.sh                  # Kotlin unit tests + fast E2E tests (~10s)
+./test.sh --full           # Kotlin unit tests + ALL E2E tests (~2-3 min)
+./test.sh --headed         # With browser visible
+./test.sh --full --headed  # All tests with browser visible
+```
+
+### Unit Tests (Kotlin)
+
+```bash
+./gradlew test
+```
+
+### E2E Tests (Playwright)
+
+E2E tests use Playwright and automatically start the server with `POSTHOG_ENABLED=false` to prevent analytics from being triggered during testing.
+
+```bash
+# Install dependencies (first time only)
+npm install
+npx playwright install chromium
+
+# Run all E2E tests
+npm run test:e2e
+
+# Run fast tests only (~5 seconds) - recommended for CI
+npm run test:e2e:fast
+
+# Run slow tests only (~2 minutes) - gameplay + disconnect scenarios
+npm run test:e2e:slow
+
+# Run with browser visible
+npm run test:e2e:headed
+npm run test:e2e:fast:headed
+npm run test:e2e:slow:headed
+
+# Run with Playwright UI
+npm run test:e2e:ui
+
+# Debug mode
+npm run test:e2e:debug
+```
+
+**Test categories:**
+- **Fast tests (21)**: Homepage, game creation, joining, multiplayer flow, static pages
+- **Slow tests (4)**: Host disconnect transfer, player disconnect during game, winner determination, host disconnect on game over (require gameplay/SSE timeouts)
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `POSTHOG_ENABLED` | `true` | Set to `false` to disable PostHog analytics and cookie banner |
+
+Example:
+```bash
+# Run with analytics disabled
+POSTHOG_ENABLED=false ./gradlew run
+```
 
 ## Project Structure
 
@@ -95,6 +175,9 @@ src/main/resources/
     ├── htmx.min.js   # HTMX library (served locally)
     ├── index.html    # SSE demo page (legacy)
     └── style.css     # Mobile-first responsive styles
+
+e2e/                  # Playwright E2E tests
+└── game.spec.ts      # Game flow tests
 ```
 
 ### Code Organization

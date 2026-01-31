@@ -30,6 +30,22 @@ internal fun String.escapeHtml(): String =
         .replace("\"", "&quot;")
         .replace("'", "&#x27;")
 
+/**
+ * Configuration for analytics and tracking.
+ *
+ * Reads from environment variables with sensible defaults.
+ */
+internal object AnalyticsConfig {
+    /**
+     * Whether PostHog analytics is enabled.
+     *
+     * Controlled by the `POSTHOG_ENABLED` environment variable.
+     * Defaults to `true` if not set (production behavior).
+     * Set to `false` to disable analytics (e.g., for local development).
+     */
+    val posthogEnabled: Boolean = System.getenv("POSTHOG_ENABLED")?.lowercase() != "false"
+}
+
 /** localStorage key for cookie consent preference. */
 private const val COOKIE_CONSENT_KEY = "cookie_consent"
 
@@ -43,8 +59,11 @@ private const val COOKIE_CONSENT_KEY = "cookie_consent"
  * - If consent not yet given: shows cookie banner, PostHog initialized in cookieless mode
  * - If consent accepted: PostHog with full tracking (cookies enabled)
  * - If consent rejected: PostHog with cookieless_mode: 'always' (no cookies)
+ *
+ * Can be disabled via the `POSTHOG_ENABLED=false` environment variable.
  */
 internal fun HEAD.posthogScript() {
+    if (!AnalyticsConfig.posthogEnabled) return
     script {
         unsafe {
             +
@@ -98,9 +117,12 @@ internal fun HEAD.posthogScript() {
  * Renders a simple cookie consent banner at the bottom of the page.
  * Only shown if consent has not yet been given (checked via JavaScript).
  *
+ * Not rendered when PostHog analytics is disabled via `POSTHOG_ENABLED=false`.
+ *
  * @param lang The language code for translations.
  */
 internal fun BODY.cookieConsentBanner(lang: String) {
+    if (!AnalyticsConfig.posthogEnabled) return
     div {
         id = "cookie-banner"
         style =

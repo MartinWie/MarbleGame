@@ -37,3 +37,12 @@ out/
 
 #Serena
 .serena/
+
+### Dev server ###
+dev-server.pid
+dev-server.log
+
+### Node.js / Playwright ###
+node_modules/
+playwright-report/
+test-results/
