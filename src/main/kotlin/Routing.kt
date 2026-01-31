@@ -24,6 +24,23 @@ private const val SSE_PING_INTERVAL_MS = 5_000L
 /** Maximum length for player names to prevent abuse. */
 private const val MAX_PLAYER_NAME_LENGTH = 30
 
+/** Coroutine scope for game-related background tasks. */
+private val gameScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+
+/**
+ * Schedules auto-advance to next round after the countdown delay.
+ * Only advances if the game is still in ROUND_RESULT phase.
+ */
+private fun scheduleRoundAdvance(game: Game) {
+    gameScope.launch {
+        delay(ROUND_RESULT_COUNTDOWN_SECONDS * 1000L)
+        if (game.phase == GamePhase.ROUND_RESULT) {
+            game.nextRound()
+            game.broadcastToAllConnected(::renderGameState)
+        }
+    }
+}
+
 fun Application.configureRouting() {
     install(SSE)
     routing {
@@ -284,6 +301,9 @@ fun Application.configureRouting() {
             val connectionId = player.startNewConnection()
             logger.debug("SSE connected: {} connectionId={}", player.name, connectionId)
 
+            // Handle reconnection (e.g., re-add to playerOrder in lobby)
+            game.handlePlayerReconnect(session.id)
+
             // Flag to signal when connection should close
             var connectionAlive = true
 
@@ -359,7 +379,13 @@ fun Application.configureRouting() {
                 // Only handle disconnect and broadcast if we actually disconnected
                 if (!player.connected) {
                     logger.debug("SSE disconnected: {}", player.name)
+                    val phaseBefore = game.phase
                     val stateChanged = game.handlePlayerDisconnect(session.id)
+
+                    // If disconnect caused a round to resolve, schedule auto-advance
+                    if (phaseBefore == GamePhase.GUESSING && game.phase == GamePhase.ROUND_RESULT) {
+                        scheduleRoundAdvance(game)
+                    }
 
                     // Notify remaining players about the disconnect
                     if (stateChanged) {
@@ -438,6 +464,7 @@ fun Application.configureRouting() {
             // Auto-resolve if no one can guess (e.g., all others are spectators)
             if (game.allActivePlayersGuessed()) {
                 game.resolveRound()
+                scheduleRoundAdvance(game)
             }
 
             // Broadcast to all connected players
@@ -468,21 +495,8 @@ fun Application.configureRouting() {
             // Check if all players have guessed
             if (game.allActivePlayersGuessed()) {
                 game.resolveRound()
+                scheduleRoundAdvance(game)
             }
-
-            // Broadcast to all connected players
-            game.broadcastToAllConnected(::renderGameState)
-
-            call.respondText("OK")
-        }
-
-        // Continue to next round
-        post("/game/{gameId}/next-round") {
-            val session = call.sessions.get<UserSession>() ?: return@post
-            val gameId = call.parameters["gameId"] ?: return@post
-            val game = GameManager.getGame(gameId) ?: return@post
-
-            game.nextRound()
 
             // Broadcast to all connected players
             game.broadcastToAllConnected(::renderGameState)

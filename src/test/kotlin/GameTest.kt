@@ -342,13 +342,27 @@ class GameTest {
     // ==================== Reset For New Game ====================
 
     @Test
-    fun `resetForNewGame resets game phase to WAITING_FOR_PLAYERS`() {
+    fun `resetForNewGame auto-starts game when enough players connected`() {
         val game = createGameWithPlayers("Alice", "Bob")
         game.startGame()
         assertEquals(GamePhase.PLACING_MARBLES, game.phase)
 
-        game.resetForNewGame()
+        val started = game.resetForNewGame()
 
+        assertTrue(started)
+        assertEquals(GamePhase.PLACING_MARBLES, game.phase)
+    }
+
+    @Test
+    fun `resetForNewGame waits when not enough players connected`() {
+        val game = createGameWithPlayers("Alice", "Bob")
+        game.startGame()
+        // Disconnect one player
+        game.players["player1"]!!.connected = false
+
+        val started = game.resetForNewGame()
+
+        assertFalse(started)
         assertEquals(GamePhase.WAITING_FOR_PLAYERS, game.phase)
     }
 
@@ -450,6 +464,153 @@ class GameTest {
         assertEquals(0, game.currentPlayerIndex)
         assertEquals(0, game.currentMarblesPlaced)
         assertNull(game.lastRoundResult)
+    }
+
+    // ==================== Grace Period Expiry Tests ====================
+
+    @Test
+    fun `handleGracePeriodExpired does nothing in WAITING_FOR_PLAYERS phase`() {
+        val game = createGameWithPlayers("Alice", "Bob")
+        // Game is in WAITING_FOR_PLAYERS phase
+
+        // Simulate disconnect and grace period expiry
+        game.handlePlayerDisconnect("player1")
+        game.players["player1"]!!.disconnectedAt = System.currentTimeMillis() - 20_000
+
+        val changed = game.handleGracePeriodExpired("player1")
+
+        // Should not remove player in lobby
+        assertFalse(changed)
+        assertEquals(2, game.allPlayers.size)
+        assertNotNull(game.allPlayers.find { it.sessionId == "player1" })
+    }
+
+    @Test
+    fun `handleGracePeriodExpired transfers creator in GAME_OVER but does not remove player`() {
+        val game = createGameWithPlayers("Alice", "Bob")
+        game.startGame()
+
+        // Force game over
+        game.players["player1"]!!.marbles = 0
+        game.phase = GamePhase.GAME_OVER
+
+        // Creator disconnects
+        game.handlePlayerDisconnect("creator")
+        game.players["creator"]!!.disconnectedAt = System.currentTimeMillis() - 20_000
+
+        val changed = game.handleGracePeriodExpired("creator")
+
+        // Creator should transfer to Bob
+        assertTrue(changed)
+        assertEquals("player1", game.creatorSessionId)
+        // But creator should still be in playerOrder
+        assertEquals(2, game.allPlayers.size)
+        assertNotNull(game.allPlayers.find { it.sessionId == "creator" })
+    }
+
+    @Test
+    fun `handleGracePeriodExpired removes player during active game`() {
+        val game = createGameWithPlayers("Alice", "Bob", "Charlie")
+        game.startGame()
+
+        // Bob disconnects and grace period expires
+        game.handlePlayerDisconnect("player1")
+        game.players["player1"]!!.disconnectedAt = System.currentTimeMillis() - 20_000
+
+        val changed = game.handleGracePeriodExpired("player1")
+
+        // Bob should be removed
+        assertTrue(changed)
+        assertEquals(2, game.allPlayers.size)
+        assertNull(game.allPlayers.find { it.sessionId == "player1" })
+    }
+
+    // ==================== Player Reconnect Tests ====================
+
+    @Test
+    fun `handlePlayerReconnect re-adds player to playerOrder in lobby`() {
+        val game = createGameWithPlayers("Alice", "Bob")
+        game.startGame()
+
+        // Reset game with only Alice connected
+        game.players["player1"]!!.connected = false
+        game.resetForNewGame()
+
+        // Bob should not be in playerOrder
+        assertEquals(1, game.allPlayers.size)
+        assertNull(game.allPlayers.find { it.sessionId == "player1" })
+
+        // Bob reconnects
+        game.players["player1"]!!.connected = true
+        game.handlePlayerReconnect("player1")
+
+        // Bob should be back in playerOrder with 10 marbles
+        assertEquals(2, game.allPlayers.size)
+        assertNotNull(game.allPlayers.find { it.sessionId == "player1" })
+        assertEquals(10, game.players["player1"]!!.marbles)
+    }
+
+    @Test
+    fun `handlePlayerReconnect does nothing if player already in playerOrder`() {
+        val game = createGameWithPlayers("Alice", "Bob")
+        // Game is in WAITING_FOR_PLAYERS, both players in playerOrder
+
+        game.handlePlayerReconnect("player1")
+
+        // Should still have 2 players (no duplicate)
+        assertEquals(2, game.allPlayers.size)
+    }
+
+    @Test
+    fun `handlePlayerReconnect does nothing during active game`() {
+        val game = createGameWithPlayers("Alice", "Bob", "Charlie")
+        game.startGame()
+
+        // Remove Charlie from playerOrder manually (simulate edge case)
+        game.players["player2"]!!.connected = false
+
+        // Charlie reconnects during active game
+        game.players["player2"]!!.connected = true
+        game.handlePlayerReconnect("player2")
+
+        // Should not modify playerOrder during active game (still 3 players)
+        assertEquals(3, game.allPlayers.size)
+    }
+
+    @Test
+    fun `full scenario - host disconnects during game over, new host starts game, old host reconnects`() {
+        val game = createGameWithPlayers("Alice", "Bob")
+        game.startGame()
+
+        // Game over
+        game.players["player1"]!!.marbles = 0
+        game.phase = GamePhase.GAME_OVER
+
+        // Alice (creator) disconnects
+        game.handlePlayerDisconnect("creator")
+        game.players["creator"]!!.disconnectedAt = System.currentTimeMillis() - 20_000
+        game.handleGracePeriodExpired("creator")
+
+        // Bob should now be creator
+        assertEquals("player1", game.creatorSessionId)
+
+        // Bob starts new game
+        game.resetForNewGame()
+
+        // Only Bob should be in playerOrder (Alice was disconnected)
+        assertEquals(GamePhase.WAITING_FOR_PLAYERS, game.phase)
+        assertEquals(1, game.allPlayers.size)
+
+        // Alice reconnects
+        game.players["creator"]!!.connected = true
+        game.handlePlayerReconnect("creator")
+
+        // Alice should be back in playerOrder
+        assertEquals(2, game.allPlayers.size)
+        assertEquals(10, game.players["creator"]!!.marbles)
+
+        // Game can now start
+        assertTrue(game.startGame())
     }
 
     // ==================== Cleanup Tests ====================

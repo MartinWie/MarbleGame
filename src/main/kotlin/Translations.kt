@@ -79,11 +79,14 @@ object Translations {
                     "phase.result.youGained" to "You gained +%d marbles",
                     "phase.result.youLostMarbles" to "You lost -%d marbles",
                     "phase.result.youBrokeEven" to "You broke even",
+                    "phase.result.nextRoundIn" to "Next round in",
                     "button.continue" to "Continue",
                     // Game over phase
                     "phase.gameOver.title" to "Game Over!",
                     "phase.gameOver.winner" to "%s wins with %d marbles!",
                     "phase.gameOver.youWon" to "Congratulations! You won!",
+                    "phase.gameOver.youLost" to "Better luck next time!",
+                    "phase.gameOver.waitingForHost" to "Waiting for %s to start a new game...",
                     "button.playAgain" to "Play Again",
                     // Status bar
                     "status.watching" to "Watching - <strong>You'll join next round!</strong>",
@@ -162,11 +165,14 @@ object Translations {
                     "phase.result.youGained" to "Du hast +%d Murmeln gewonnen",
                     "phase.result.youLostMarbles" to "Du hast -%d Murmeln verloren",
                     "phase.result.youBrokeEven" to "Unentschieden",
+                    "phase.result.nextRoundIn" to "Nächste Runde in",
                     "button.continue" to "Weiter",
                     // Game over phase
                     "phase.gameOver.title" to "Spiel vorbei!",
                     "phase.gameOver.winner" to "%s gewinnt mit %d Murmeln!",
                     "phase.gameOver.youWon" to "Du hast gewonnen!",
+                    "phase.gameOver.youLost" to "Vielleicht beim nächsten Mal!",
+                    "phase.gameOver.waitingForHost" to "Warte auf %s für ein neues Spiel...",
                     "button.playAgain" to "Nochmal spielen",
                     // Status bar
                     "status.watching" to "Zuschauer - <strong>Du spielst nächste Runde mit!</strong>",

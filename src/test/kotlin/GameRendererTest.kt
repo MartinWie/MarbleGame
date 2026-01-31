@@ -199,7 +199,7 @@ class GameRendererTest {
 
         assertTrue(html.contains("Result"))
         assertTrue(html.contains("EVEN"))
-        assertTrue(html.contains("Continue"))
+        assertTrue(html.contains("Next round in"))
     }
 
     @Test

@@ -7,6 +7,9 @@ import kotlin.random.Random
 
 private val logger = LoggerFactory.getLogger(Game::class.java)
 
+/** Seconds to show round results before auto-advancing to next round. */
+const val ROUND_RESULT_COUNTDOWN_SECONDS = 5
+
 /**
  * Phases of the Marble Game.
  *
@@ -82,7 +85,7 @@ data class RoundResult(
  * - Last player with marbles wins
  *
  * ## Connection Handling
- * Players who disconnect have a 30-second grace period to reconnect.
+ * Players who disconnect have a 15-second grace period to reconnect.
  * During this time, they're still considered "available" for game logic.
  * If they don't reconnect, their marbles are distributed to remaining players.
  *
@@ -126,6 +129,10 @@ class Game(
 
     /** Result from the most recent round (for display). */
     var lastRoundResult: RoundResult? = null
+
+    /** Timestamp when round result phase started (for auto-advance countdown). */
+    var roundResultTimestamp: Long? = null
+        private set
 
     /** Ordered list of active player session IDs (determines turn order). */
     private val playerOrder = mutableListOf<String>()
@@ -255,6 +262,24 @@ class Game(
         }
     }
 
+    /**
+     * Handles a player reconnecting to the game.
+     *
+     * In lobby phase, re-adds the player to playerOrder if they were removed.
+     *
+     * @param sessionId The reconnecting player's session ID
+     */
+    fun handlePlayerReconnect(sessionId: String) {
+        val player = players[sessionId] ?: return
+
+        // In lobby, ensure reconnecting players are in playerOrder
+        if (phase == GamePhase.WAITING_FOR_PLAYERS && sessionId !in playerOrder) {
+            player.marbles = 10
+            playerOrder.add(sessionId)
+            logger.info("Game {} player '{}' re-added to lobby", id, player.name)
+        }
+    }
+
     // ==================== Game Flow ====================
 
     /**
@@ -268,10 +293,11 @@ class Game(
      */
     fun startGame(): Boolean {
         touch()
-        val connectedPlayerIndices = playerOrder.indices.filter { index ->
-            val player = players[playerOrder[index]]
-            player != null && player.connected && !player.isSpectator
-        }
+        val connectedPlayerIndices =
+            playerOrder.indices.filter { index ->
+                val player = players[playerOrder[index]]
+                player != null && player.connected && !player.isSpectator
+            }
         if (connectedPlayerIndices.size < 2) return false
 
         phase = GamePhase.PLACING_MARBLES
@@ -404,6 +430,7 @@ class Game(
             )
 
         phase = GamePhase.ROUND_RESULT
+        roundResultTimestamp = System.currentTimeMillis()
         return lastRoundResult
     }
 
@@ -412,9 +439,13 @@ class Game(
      *
      * Promotes pending players and moves to the next player's turn.
      *
-     * @return `true` if game continues, `false` if game over
+     * @return `true` if game continues, `false` if game over or not in ROUND_RESULT phase
      */
     fun nextRound(): Boolean {
+        // Guard: only advance if we're actually in ROUND_RESULT phase
+        // This prevents race conditions from multiple clients calling simultaneously
+        if (phase != GamePhase.ROUND_RESULT) return false
+
         promotePendingPlayers()
 
         val playersWithMarbles = connectedActivePlayers
@@ -429,6 +460,18 @@ class Game(
         currentMarblesPlaced = 0
         phase = GamePhase.PLACING_MARBLES
         return true
+    }
+
+    /**
+     * Gets the remaining seconds before auto-advancing from round result.
+     *
+     * @return Remaining seconds, or 0 if countdown has passed or not in ROUND_RESULT phase
+     */
+    fun roundResultCooldownRemaining(): Int {
+        if (phase != GamePhase.ROUND_RESULT) return 0
+        val timestamp = roundResultTimestamp ?: return 0
+        val elapsed = (System.currentTimeMillis() - timestamp) / 1000
+        return maxOf(0, ROUND_RESULT_COUNTDOWN_SECONDS - elapsed.toInt())
     }
 
     /**
@@ -502,7 +545,7 @@ class Game(
                 }
             }
             GamePhase.GAME_OVER -> {
-                // No action needed
+                // Nothing special on disconnect - creator transfers on grace period expiry
             }
         }
         return true
@@ -521,6 +564,22 @@ class Game(
         val player = players[sessionId] ?: return false
 
         if (player.connected || player.isWithinGracePeriod()) return false
+
+        // In lobby, don't remove disconnected players - they can reconnect anytime
+        if (phase == GamePhase.WAITING_FOR_PLAYERS) return false
+
+        // In game over, only transfer creator if needed (don't remove player)
+        if (phase == GamePhase.GAME_OVER) {
+            if (sessionId == creatorSessionId) {
+                val newCreator = players.values.firstOrNull { it.connected && it.sessionId != sessionId }
+                if (newCreator != null) {
+                    creatorSessionId = newCreator.sessionId
+                    logger.info("Game {} creator transferred to '{}'", id, newCreator.name)
+                    return true
+                }
+            }
+            return false
+        }
 
         // Transfer creator status if needed
         if (sessionId == creatorSessionId) {
@@ -588,12 +647,15 @@ class Game(
      * Resets the game for a new round (Play Again functionality).
      *
      * All connected players get 10 marbles and are re-added to the turn order.
+     * If there are enough players, the game starts immediately.
+     *
+     * @return `true` if game started immediately, `false` if waiting for more players
      */
-    fun resetForNewGame() {
-        phase = GamePhase.WAITING_FOR_PLAYERS
+    fun resetForNewGame(): Boolean {
         currentPlayerIndex = 0
         currentMarblesPlaced = 0
         lastRoundResult = null
+        roundResultTimestamp = null
 
         val connectedSessionIds =
             players.values
@@ -615,6 +677,16 @@ class Game(
         }
 
         logger.info("Game {} reset with {} players", id, playerOrder.size)
+
+        // Auto-start if we have enough players
+        if (playerOrder.size >= 2) {
+            phase = GamePhase.PLACING_MARBLES
+            logger.info("Game {} auto-started after reset", id)
+            return true
+        } else {
+            phase = GamePhase.WAITING_FOR_PLAYERS
+            return false
+        }
     }
 
     /**

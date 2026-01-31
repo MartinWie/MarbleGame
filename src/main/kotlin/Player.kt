@@ -4,8 +4,8 @@ import kotlinx.coroutines.channels.Channel
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
-/** Grace period for disconnected players before they are removed from the game (30 seconds). */
-const val DISCONNECT_GRACE_PERIOD_MS = 30_000L
+/** Grace period for disconnected players before they are removed from the game (15 seconds). */
+const val DISCONNECT_GRACE_PERIOD_MS = 15_000L
 
 /**
  * Represents a player in the Marble Game.

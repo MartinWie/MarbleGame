@@ -404,8 +404,8 @@ fun HTML.renderGamePage(
                     function startCountdowns() {
                         if (countdownInterval) clearInterval(countdownInterval);
                         countdownInterval = setInterval(function() {
+                            // Handle player disconnect countdowns
                             var countdowns = document.querySelectorAll('.player-countdown');
-                            if (countdowns.length === 0) return;
                             countdowns.forEach(function(el) {
                                 var seconds = parseInt(el.dataset.seconds) - 1;
                                 el.dataset.seconds = seconds;
@@ -416,6 +416,17 @@ fun HTML.renderGamePage(
                                     fetch('/game/${game.id}/check-disconnects', { method: 'POST' });
                                 }
                             });
+                            
+                            // Handle round result countdown (visual only - server auto-advances)
+                            var resultCountdown = document.querySelector('.result-countdown');
+                            if (resultCountdown) {
+                                var seconds = parseInt(resultCountdown.dataset.seconds) - 1;
+                                if (seconds >= 0) {
+                                    resultCountdown.dataset.seconds = seconds;
+                                    var timerSpan = resultCountdown.querySelector('.countdown-timer');
+                                    if (timerSpan) timerSpan.textContent = seconds;
+                                }
+                            }
                         }, 1000);
                     }
                     
@@ -802,10 +813,13 @@ fun renderGameState(
                                 }
                             }
                         }
-                        button(classes = "btn btn-primary") {
-                            hxPost("/game/${game.id}/next-round")
-                            hxSwap(HxSwapOption.NONE)
-                            +"button.continue".t(lang)
+                        // Countdown indicator instead of button
+                        val remainingSeconds = game.roundResultCooldownRemaining()
+                        div("result-countdown") {
+                            attributes["data-seconds"] = remainingSeconds.toString()
+                            +"phase.result.nextRoundIn".t(lang)
+                            +" "
+                            span("countdown-timer") { +"$remainingSeconds" }
                         }
                     }
                 }
@@ -819,13 +833,21 @@ fun renderGameState(
                                 p("winner-text") { +"phase.gameOver.winner".t(lang, winner.name.escapeHtml(), winner.marbles) }
                                 if (winner.sessionId == sessionId) {
                                     p("you-won") { +"phase.gameOver.youWon".t(lang) }
+                                } else {
+                                    p("you-lost") { +"phase.gameOver.youLost".t(lang) }
                                 }
                             }
                         }
-                        button(classes = "btn btn-primary") {
-                            hxPost("/game/${game.id}/new-game")
-                            hxSwap(HxSwapOption.NONE)
-                            +"button.playAgain".t(lang)
+                        // Only host can start a new game
+                        if (isCreator) {
+                            button(classes = "btn btn-primary") {
+                                hxPost("/game/${game.id}/new-game")
+                                hxSwap(HxSwapOption.NONE)
+                                +"button.playAgain".t(lang)
+                            }
+                        } else {
+                            val hostName = game.players[game.creatorSessionId]?.name?.escapeHtml() ?: "Host"
+                            p("waiting-for-host") { +"phase.gameOver.waitingForHost".t(lang, hostName) }
                         }
                     }
                 }
