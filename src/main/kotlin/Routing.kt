@@ -40,6 +40,7 @@ fun Application.configureRouting() {
                     meta(name = "viewport", content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no")
                     script(src = "/static/htmx.min.js") {}
                     link(rel = "stylesheet", href = "/static/style.css")
+                    posthogScript()
                 }
                 body {
                     div("container") {
@@ -70,6 +71,9 @@ fun Application.configureRouting() {
                             }
                         }
                     }
+
+                    // Cookie consent banner
+                    cookieConsentBanner(lang)
                 }
             }
         }
@@ -175,6 +179,7 @@ fun Application.configureRouting() {
                     meta(name = "viewport", content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no")
                     script(src = "/static/htmx.min.js") {}
                     link(rel = "stylesheet", href = "/static/style.css")
+                    posthogScript()
                 }
                 body {
                     div("container") {
@@ -204,6 +209,9 @@ fun Application.configureRouting() {
                             }
                         }
                     }
+
+                    // Cookie consent banner
+                    cookieConsentBanner(lang)
                 }
             }
         }
@@ -227,6 +235,7 @@ fun Application.configureRouting() {
                         head {
                             meta(name = "viewport", content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no")
                             link(rel = "stylesheet", href = "/static/style.css")
+                            posthogScript()
                         }
                         body {
                             div("container") {
@@ -235,6 +244,9 @@ fun Application.configureRouting() {
                                     a(href = "/", classes = "btn btn-primary") { +"button.goBack".t(lang) }
                                 }
                             }
+
+                            // Cookie consent banner
+                            cookieConsentBanner(lang)
                         }
                     }
                     return@get

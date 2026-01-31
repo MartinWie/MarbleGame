@@ -84,6 +84,10 @@ object Translations {
                     "status.watching" to "Watching - <strong>You'll join next round!</strong>",
                     "status.pending" to "Pending",
                     "status.yourMarbles" to "Your marbles: <strong>%d</strong>",
+                    // Cookie consent
+                    "cookie.message" to "We use cookies to analyze site usage and improve your experience.",
+                    "cookie.accept" to "Accept",
+                    "cookie.reject" to "Reject",
                 ),
             "de" to
                 mapOf(
@@ -158,6 +162,10 @@ object Translations {
                     "status.watching" to "Zuschauer - <strong>Du spielst nächste Runde mit!</strong>",
                     "status.pending" to "Wartend",
                     "status.yourMarbles" to "Deine Murmeln: <strong>%d</strong>",
+                    // Cookie consent
+                    "cookie.message" to "Wir nutzen Cookies zur Analyse und Verbesserung der Website.",
+                    "cookie.accept" to "Akzeptieren",
+                    "cookie.reject" to "Ablehnen",
                 ),
         )
 

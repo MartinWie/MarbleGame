@@ -30,6 +30,152 @@ internal fun String.escapeHtml(): String =
         .replace("\"", "&quot;")
         .replace("'", "&#x27;")
 
+/** localStorage key for cookie consent preference. */
+private const val COOKIE_CONSENT_KEY = "cookie_consent"
+
+/**
+ * PostHog analytics script for page tracking with cookie consent management.
+ *
+ * Outputs the PostHog JavaScript snippet for analytics tracking.
+ * Should be included in the `<head>` section of all pages.
+ *
+ * Cookie consent flow:
+ * - If consent not yet given: shows cookie banner, PostHog initialized in cookieless mode
+ * - If consent accepted: PostHog with full tracking (cookies enabled)
+ * - If consent rejected: PostHog with cookieless_mode: 'always' (no cookies)
+ */
+internal fun HEAD.posthogScript() {
+    script {
+        unsafe {
+            +
+                """
+                (function() {
+                    var CONSENT_KEY = '$COOKIE_CONSENT_KEY';
+                    var consent = localStorage.getItem(CONSENT_KEY);
+                    
+                    // PostHog loader
+                    !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once register_for_session unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group identify setPersonProperties setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags resetGroups onFeatureFlags addFeatureFlagsHandler onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey getNextSurveyStep".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+                    
+                    // Initialize PostHog based on consent status
+                    var config = {
+                        api_host: 'https://eu.i.posthog.com',
+                        defaults: '2025-11-30'
+                    };
+                    
+                    if (consent === 'rejected' || consent === null) {
+                        // No consent or rejected: use cookieless mode
+                        config.persistence = 'memory';
+                    }
+                    
+                    posthog.init('phc_SBn2sxfR87LLBLbf6z3WLjWUrqTxtec6cp7atY0nHoM', config);
+                    
+                    // Cookie consent functions (global)
+                    window.acceptCookies = function() {
+                        localStorage.setItem(CONSENT_KEY, 'accepted');
+                        hideBanner();
+                        // Reload to reinitialize PostHog with cookies
+                        location.reload();
+                    };
+                    
+                    window.rejectCookies = function() {
+                        localStorage.setItem(CONSENT_KEY, 'rejected');
+                        hideBanner();
+                    };
+                    
+                    function hideBanner() {
+                        var banner = document.getElementById('cookie-banner');
+                        if (banner) banner.style.display = 'none';
+                    }
+                })();
+                """.trimIndent()
+        }
+    }
+}
+
+/**
+ * Cookie consent banner HTML/CSS.
+ *
+ * Renders a simple cookie consent banner at the bottom of the page.
+ * Only shown if consent has not yet been given (checked via JavaScript).
+ *
+ * @param lang The language code for translations.
+ */
+internal fun BODY.cookieConsentBanner(lang: String) {
+    div {
+        id = "cookie-banner"
+        style =
+            """
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(15, 15, 26, 0.98);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 16px 20px;
+            padding-bottom: max(16px, env(safe-area-inset-bottom));
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 1000;
+            display: none;
+            """.trimIndent().replace("\n", " ")
+        div {
+            style =
+                "max-width: 600px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; align-items: center; text-align: center;"
+            p {
+                style = "margin: 0; color: #a0a0b0; font-size: 0.9rem; line-height: 1.4;"
+                +"cookie.message".t(lang)
+            }
+            div {
+                style = "display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;"
+                button {
+                    style =
+                        """
+                        background: linear-gradient(135deg, #00d4ff 0%, #a855f7 100%);
+                        color: white;
+                        border: none;
+                        padding: 10px 24px;
+                        border-radius: 8px;
+                        font-weight: 600;
+                        cursor: pointer;
+                        font-size: 0.9rem;
+                        """.trimIndent().replace("\n", " ")
+                    attributes["onclick"] = "acceptCookies()"
+                    +"cookie.accept".t(lang)
+                }
+                button {
+                    style =
+                        """
+                        background: transparent;
+                        color: #a0a0b0;
+                        border: 1px solid rgba(255, 255, 255, 0.2);
+                        padding: 10px 24px;
+                        border-radius: 8px;
+                        font-weight: 600;
+                        cursor: pointer;
+                        font-size: 0.9rem;
+                        """.trimIndent().replace("\n", " ")
+                    attributes["onclick"] = "rejectCookies()"
+                    +"cookie.reject".t(lang)
+                }
+            }
+        }
+    }
+    // Show banner only if consent not yet given
+    script {
+        unsafe {
+            +
+                """
+                (function() {
+                    var consent = localStorage.getItem('$COOKIE_CONSENT_KEY');
+                    if (consent === null) {
+                        document.getElementById('cookie-banner').style.display = 'block';
+                    }
+                })();
+                """.trimIndent()
+        }
+    }
+}
+
 /**
  * Renders the main game page HTML structure.
  *
@@ -73,6 +219,7 @@ fun HTML.renderGamePage(
 
         script(src = "/static/htmx.min.js") {}
         link(rel = "stylesheet", href = "/static/style.css")
+        posthogScript()
     }
     body {
         div("container") {
@@ -414,6 +561,9 @@ fun HTML.renderGamePage(
                 """
             }
         }
+
+        // Cookie consent banner
+        cookieConsentBanner(lang)
     }
 }
 
