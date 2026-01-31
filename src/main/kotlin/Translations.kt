@@ -74,6 +74,11 @@ object Translations {
                     "phase.result.wasOdd" to "It was <strong>ODD</strong>!",
                     "phase.result.winners" to "Winners: %s (+%d each)",
                     "phase.result.losers" to "Lost their bet: %s",
+                    "phase.result.youWon" to "You won! +%d marbles",
+                    "phase.result.youLost" to "You lost! -%d marbles",
+                    "phase.result.youGained" to "You gained +%d marbles",
+                    "phase.result.youLostMarbles" to "You lost -%d marbles",
+                    "phase.result.youBrokeEven" to "You broke even",
                     "button.continue" to "Continue",
                     // Game over phase
                     "phase.gameOver.title" to "Game Over!",
@@ -152,6 +157,11 @@ object Translations {
                     "phase.result.wasOdd" to "Es war <strong>UNGERADE</strong>!",
                     "phase.result.winners" to "Gewinner: %s (+%d pro Person)",
                     "phase.result.losers" to "Verloren: %s",
+                    "phase.result.youWon" to "Gewonnen! +%d Murmeln",
+                    "phase.result.youLost" to "Verloren! -%d Murmeln",
+                    "phase.result.youGained" to "Du hast +%d Murmeln gewonnen",
+                    "phase.result.youLostMarbles" to "Du hast -%d Murmeln verloren",
+                    "phase.result.youBrokeEven" to "Unentschieden",
                     "button.continue" to "Weiter",
                     // Game over phase
                     "phase.gameOver.title" to "Spiel vorbei!",

@@ -46,19 +46,25 @@ enum class Guess {
  * Result of a completed round.
  *
  * @property placerName Name of the player who placed marbles
+ * @property placerSessionId Session ID of the player who placed marbles
  * @property marblesPlaced How many marbles were hidden
  * @property wasEven Whether the count was even
  * @property winners Names of players who guessed correctly
+ * @property winnerSessionIds Session IDs of players who guessed correctly
  * @property losers Names of players who guessed incorrectly
+ * @property loserSessionIds Session IDs of players who guessed incorrectly
  * @property marblesWonPerWinner How many marbles each winner received
  * @property marblesLostByPlacer Net marbles lost by the placer (negative if gained)
  */
 data class RoundResult(
     val placerName: String,
+    val placerSessionId: String,
     val marblesPlaced: Int,
     val wasEven: Boolean,
     val winners: List<String>,
+    val winnerSessionIds: List<String>,
     val losers: List<String>,
+    val loserSessionIds: List<String>,
     val marblesWonPerWinner: Int,
     val marblesLostByPlacer: Int,
 )
@@ -386,10 +392,13 @@ class Game(
         lastRoundResult =
             RoundResult(
                 placerName = placer.name,
+                placerSessionId = placer.sessionId,
                 marblesPlaced = currentMarblesPlaced,
                 wasEven = isEven,
                 winners = winners.map { it.name },
+                winnerSessionIds = winners.map { it.sessionId },
                 losers = losers.map { it.name },
+                loserSessionIds = losers.map { it.sessionId },
                 marblesWonPerWinner = marblesWonPerWinner,
                 marblesLostByPlacer = netMarblesLostByPlacer,
             )

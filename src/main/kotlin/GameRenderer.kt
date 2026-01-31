@@ -750,6 +750,37 @@ fun renderGameState(
                     div("phase-info result-phase") {
                         h2 { +"phase.result.title".t(lang) }
                         if (result != null) {
+                            // Personalized result message for the current player
+                            val isWinner = result.winnerSessionIds.contains(sessionId)
+                            val isLoser = result.loserSessionIds.contains(sessionId)
+                            val isPlacer = result.placerSessionId == sessionId
+
+                            when {
+                                isWinner -> {
+                                    div("personal-result winner") {
+                                        +"phase.result.youWon".t(lang, result.marblesWonPerWinner)
+                                    }
+                                }
+                                isLoser -> {
+                                    div("personal-result loser") {
+                                        +"phase.result.youLost".t(lang, result.marblesPlaced)
+                                    }
+                                }
+                                isPlacer -> {
+                                    val netChange = -result.marblesLostByPlacer // Positive = gained, Negative = lost
+                                    val placerClass = if (netChange >= 0) "winner" else "loser"
+                                    div("personal-result $placerClass") {
+                                        if (netChange > 0) {
+                                            +"phase.result.youGained".t(lang, netChange)
+                                        } else if (netChange < 0) {
+                                            +"phase.result.youLostMarbles".t(lang, -netChange)
+                                        } else {
+                                            +"phase.result.youBrokeEven".t(lang)
+                                        }
+                                    }
+                                }
+                            }
+
                             div("result-card") {
                                 p { tr("phase.result.placed", lang, result.placerName.escapeHtml(), result.marblesPlaced) }
                                 p("result-answer") {
