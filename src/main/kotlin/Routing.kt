@@ -52,50 +52,33 @@ fun Application.configureRouting() {
             val lang = call.getLanguage()
 
             call.respondHtml {
-                head {
-                    title { +"game.title".t(lang) }
-                    meta(name = "viewport", content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no")
-                    script(src = "/static/htmx.min.js") {}
-                    link(rel = "stylesheet", href = "/static/style.css")
-                    posthogScript()
-                }
-                body {
-                    div("page-wrapper") {
-                        div("container") {
-                            h1 { +"game.title".t(lang) }
+                basePage("game.title".t(lang), lang, includeHtmx = true) {
+                    h1 { +"game.title".t(lang) }
 
-                            if (error == "game_not_found") {
-                                div("error-message") {
-                                    +"error.gameNotFound".t(lang)
-                                }
-                            }
-
-                            div("card") {
-                                h2 { +"home.createGame".t(lang) }
-                                form {
-                                    hxPost("/game/create")
-                                    hxTarget("body")
-
-                                    div("form-group") {
-                                        label { +"home.yourName".t(lang) }
-                                        input(type = InputType.text, name = "playerName") {
-                                            required = true
-                                            placeholder = "home.namePlaceholder".t(lang)
-                                            value = savedName
-                                            maxLength = MAX_PLAYER_NAME_LENGTH.toString()
-                                        }
-                                    }
-                                    button(type = ButtonType.submit, classes = "btn btn-primary") { +"button.create".t(lang) }
-                                }
-                            }
+                    if (error == "game_not_found") {
+                        div("error-message") {
+                            +"error.gameNotFound".t(lang)
                         }
                     }
 
-                    // Footer
-                    pageFooter(lang)
+                    div("card") {
+                        h2 { +"home.createGame".t(lang) }
+                        form {
+                            hxPost("/game/create")
+                            hxTarget("body")
 
-                    // Cookie consent banner
-                    cookieConsentBanner(lang)
+                            div("form-group") {
+                                label { +"home.yourName".t(lang) }
+                                input(type = InputType.text, name = "playerName") {
+                                    required = true
+                                    placeholder = "home.namePlaceholder".t(lang)
+                                    value = savedName
+                                    maxLength = MAX_PLAYER_NAME_LENGTH.toString()
+                                }
+                            }
+                            button(type = ButtonType.submit, classes = "btn btn-primary") { +"button.create".t(lang) }
+                        }
+                    }
                 }
             }
         }
@@ -104,30 +87,19 @@ fun Application.configureRouting() {
         get("/imprint") {
             val lang = call.getLanguage()
             call.respondHtml {
-                head {
-                    title { +"${"footer.imprint".t(lang)} - ${"game.title".t(lang)}" }
-                    meta(name = "viewport", content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no")
-                    link(rel = "stylesheet", href = "/static/style.css")
-                }
-                body {
-                    div("page-wrapper") {
-                        div("container") {
-                            h1 { +"footer.imprint".t(lang) }
-                            div("card") {
-                                style = "text-align: left;"
-                                h2 { +"imprint.headline".t(lang) }
-                                p { +"imprint.hobbyProject".t(lang) }
-                                h3 { +"imprint.contact".t(lang) }
-                                p { +"imprint.email".t(lang) }
-                                h3 { +"imprint.liabilityContent".t(lang) }
-                                p { +"imprint.liabilityContentText".t(lang) }
-                                h3 { +"imprint.liabilityLinks".t(lang) }
-                                p { +"imprint.liabilityLinksText".t(lang) }
-                            }
-                        }
+                basePage("${"footer.imprint".t(lang)} - ${"game.title".t(lang)}", lang) {
+                    h1 { +"footer.imprint".t(lang) }
+                    div("card") {
+                        style = "text-align: left;"
+                        h2 { +"imprint.headline".t(lang) }
+                        p { +"imprint.hobbyProject".t(lang) }
+                        h3 { +"imprint.contact".t(lang) }
+                        p { +"imprint.email".t(lang) }
+                        h3 { +"imprint.liabilityContent".t(lang) }
+                        p { +"imprint.liabilityContentText".t(lang) }
+                        h3 { +"imprint.liabilityLinks".t(lang) }
+                        p { +"imprint.liabilityLinksText".t(lang) }
                     }
-
-                    pageFooter(lang)
                 }
             }
         }
@@ -136,63 +108,52 @@ fun Application.configureRouting() {
         get("/privacy") {
             val lang = call.getLanguage()
             call.respondHtml {
-                head {
-                    title { +"${"footer.privacy".t(lang)} - ${"game.title".t(lang)}" }
-                    meta(name = "viewport", content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no")
-                    link(rel = "stylesheet", href = "/static/style.css")
-                }
-                body {
-                    div("page-wrapper") {
-                        div("container") {
-                            h1 { +"footer.privacy".t(lang) }
-                            div("card") {
-                                style = "text-align: left;"
-                                h2 { +"privacy.headline".t(lang) }
+                basePage("${"footer.privacy".t(lang)} - ${"game.title".t(lang)}", lang) {
+                    h1 { +"footer.privacy".t(lang) }
+                    div("card") {
+                        style = "text-align: left;"
+                        h2 { +"privacy.headline".t(lang) }
 
-                                h3 { +"privacy.controller".t(lang) }
-                                p { +"privacy.controllerText".t(lang) }
-                                p { +"privacy.controllerEmail".t(lang) }
-                                p { +"privacy.hobbyProject".t(lang) }
+                        h3 { +"privacy.controller".t(lang) }
+                        p { +"privacy.controllerText".t(lang) }
+                        p { +"privacy.controllerEmail".t(lang) }
+                        p { +"privacy.hobbyProject".t(lang) }
 
-                                h3 { +"privacy.dataCollected".t(lang) }
-                                p { +"privacy.dataCollectedText".t(lang) }
-                                ul {
-                                    li { +"privacy.dataSession".t(lang) }
-                                    li { +"privacy.dataPlayer".t(lang) }
-                                    li { +"privacy.dataAnalytics".t(lang) }
-                                }
-
-                                h3 { +"privacy.legalBasis".t(lang) }
-                                p { +"privacy.legalBasisText".t(lang) }
-                                ul {
-                                    li { +"privacy.legalBasisNecessary".t(lang) }
-                                    li { +"privacy.legalBasisConsent".t(lang) }
-                                }
-
-                                h3 { +"privacy.retention".t(lang) }
-                                p { +"privacy.retentionText".t(lang) }
-
-                                h3 { +"privacy.rights".t(lang) }
-                                p { +"privacy.rightsText".t(lang) }
-                                ul {
-                                    li { +"privacy.rightsAccess".t(lang) }
-                                    li { +"privacy.rightsRectification".t(lang) }
-                                    li { +"privacy.rightsErasure".t(lang) }
-                                    li { +"privacy.rightsRestriction".t(lang) }
-                                    li { +"privacy.rightsWithdraw".t(lang) }
-                                    li { +"privacy.rightsComplaint".t(lang) }
-                                }
-
-                                h3 { +"privacy.cookies".t(lang) }
-                                p { +"privacy.cookiesText".t(lang) }
-
-                                h3 { +"privacy.thirdParties".t(lang) }
-                                p { +"privacy.thirdPartiesText".t(lang) }
-                            }
+                        h3 { +"privacy.dataCollected".t(lang) }
+                        p { +"privacy.dataCollectedText".t(lang) }
+                        ul {
+                            li { +"privacy.dataSession".t(lang) }
+                            li { +"privacy.dataPlayer".t(lang) }
+                            li { +"privacy.dataAnalytics".t(lang) }
                         }
-                    }
 
-                    pageFooter(lang)
+                        h3 { +"privacy.legalBasis".t(lang) }
+                        p { +"privacy.legalBasisText".t(lang) }
+                        ul {
+                            li { +"privacy.legalBasisNecessary".t(lang) }
+                            li { +"privacy.legalBasisConsent".t(lang) }
+                        }
+
+                        h3 { +"privacy.retention".t(lang) }
+                        p { +"privacy.retentionText".t(lang) }
+
+                        h3 { +"privacy.rights".t(lang) }
+                        p { +"privacy.rightsText".t(lang) }
+                        ul {
+                            li { +"privacy.rightsAccess".t(lang) }
+                            li { +"privacy.rightsRectification".t(lang) }
+                            li { +"privacy.rightsErasure".t(lang) }
+                            li { +"privacy.rightsRestriction".t(lang) }
+                            li { +"privacy.rightsWithdraw".t(lang) }
+                            li { +"privacy.rightsComplaint".t(lang) }
+                        }
+
+                        h3 { +"privacy.cookies".t(lang) }
+                        p { +"privacy.cookiesText".t(lang) }
+
+                        h3 { +"privacy.thirdParties".t(lang) }
+                        p { +"privacy.thirdPartiesText".t(lang) }
+                    }
                 }
             }
         }
@@ -214,7 +175,15 @@ fun Application.configureRouting() {
             val game = GameManager.createGame(session.id)
             game.addPlayer(session.id, playerName, lang)
 
-            call.respondRedirect("/game/${game.id}")
+            // Use HX-Redirect for HTMX requests to force full page navigation
+            // This ensures scripts on the game page are properly loaded and executed
+            val redirectUrl = "/game/${game.id}"
+            if (call.request.headers["HX-Request"] == "true") {
+                call.response.header("HX-Redirect", redirectUrl)
+                call.respond(HttpStatusCode.OK)
+            } else {
+                call.respondRedirect(redirectUrl)
+            }
         }
 
         // Join an existing game
@@ -254,7 +223,15 @@ fun Application.configureRouting() {
             logger.info("Player '{}' joined game {}", playerName, game.id)
             game.broadcastToAllConnected(::renderGameState)
 
-            call.respondRedirect("/game/${game.id}")
+            // Use HX-Redirect for HTMX requests to force full page navigation
+            // This ensures scripts on the game page are properly loaded and executed
+            val redirectUrl = "/game/${game.id}"
+            if (call.request.headers["HX-Request"] == "true") {
+                call.response.header("HX-Redirect", redirectUrl)
+                call.respond(HttpStatusCode.OK)
+            } else {
+                call.respondRedirect(redirectUrl)
+            }
         }
 
         // Direct join via URL
@@ -293,44 +270,32 @@ fun Application.configureRouting() {
             val lang = call.getLanguage()
 
             call.respondHtml {
-                head {
-                    title { +"join.title".t(lang) }
-                    meta(name = "viewport", content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no")
-                    script(src = "/static/htmx.min.js") {}
-                    link(rel = "stylesheet", href = "/static/style.css")
-                    posthogScript()
-                }
-                body {
-                    div("container") {
-                        h1 { +"join.title".t(lang) }
+                basePage("join.title".t(lang), lang, includeHtmx = true) {
+                    h1 { +"join.title".t(lang) }
 
-                        div("card") {
-                            if (gameInProgress) {
-                                p("hint") { +"join.spectatorHint".t(lang) }
+                    div("card") {
+                        if (gameInProgress) {
+                            p("hint") { +"join.spectatorHint".t(lang) }
+                        }
+                        form {
+                            hxPost("/game/join")
+                            hxTarget("body")
+
+                            input(type = InputType.hidden, name = "gameId") { value = gameId }
+                            div("form-group") {
+                                label { +"home.yourName".t(lang) }
+                                input(type = InputType.text, name = "playerName") {
+                                    required = true
+                                    placeholder = "home.namePlaceholder".t(lang)
+                                    value = savedName
+                                    maxLength = MAX_PLAYER_NAME_LENGTH.toString()
+                                }
                             }
-                            form {
-                                hxPost("/game/join")
-                                hxTarget("body")
-
-                                input(type = InputType.hidden, name = "gameId") { value = gameId }
-                                div("form-group") {
-                                    label { +"home.yourName".t(lang) }
-                                    input(type = InputType.text, name = "playerName") {
-                                        required = true
-                                        placeholder = "home.namePlaceholder".t(lang)
-                                        value = savedName
-                                        maxLength = MAX_PLAYER_NAME_LENGTH.toString()
-                                    }
-                                }
-                                button(type = ButtonType.submit, classes = "btn btn-primary") {
-                                    if (gameInProgress) +"button.joinSpectator".t(lang) else +"button.join".t(lang)
-                                }
+                            button(type = ButtonType.submit, classes = "btn btn-primary") {
+                                if (gameInProgress) +"button.joinSpectator".t(lang) else +"button.join".t(lang)
                             }
                         }
                     }
-
-                    // Cookie consent banner
-                    cookieConsentBanner(lang)
                 }
             }
         }
@@ -351,21 +316,11 @@ fun Application.configureRouting() {
                 GameManager.getGame(gameId) ?: run {
                     val lang = call.getLanguage()
                     call.respondHtml(HttpStatusCode.NotFound) {
-                        head {
-                            meta(name = "viewport", content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no")
-                            link(rel = "stylesheet", href = "/static/style.css")
-                            posthogScript()
-                        }
-                        body {
-                            div("container") {
-                                div("card") {
-                                    h1 { +"error.gameNotFound".t(lang) }
-                                    a(href = "/", classes = "btn btn-primary") { +"button.goBack".t(lang) }
-                                }
+                        basePage("error.gameNotFound".t(lang), lang) {
+                            div("card") {
+                                h1 { +"error.gameNotFound".t(lang) }
+                                a(href = "/", classes = "btn btn-primary") { +"button.goBack".t(lang) }
                             }
-
-                            // Cookie consent banner
-                            cookieConsentBanner(lang)
                         }
                     }
                     return@get

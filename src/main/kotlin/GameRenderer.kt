@@ -202,6 +202,62 @@ internal fun BODY.pageFooter(lang: String) {
 }
 
 /**
+ * Base page template with common elements.
+ *
+ * Renders a complete HTML page with:
+ * - Standard head elements (viewport, stylesheet, PostHog, favicon, PWA meta tags)
+ * - Page wrapper structure
+ * - Footer
+ * - Cookie consent banner
+ *
+ * @param title The page title.
+ * @param lang The language code for translations.
+ * @param includeHtmx Whether to include the HTMX script (default: false).
+ * @param extraHead Optional lambda to add extra head elements.
+ * @param extraBodyContent Optional lambda to add content after the page-wrapper in body (scripts, etc.).
+ * @param content Lambda to render the page content inside the container.
+ */
+internal fun HTML.basePage(
+    title: String,
+    lang: String,
+    includeHtmx: Boolean = false,
+    extraHead: (HEAD.() -> Unit)? = null,
+    extraBodyContent: (BODY.() -> Unit)? = null,
+    content: DIV.() -> Unit,
+) {
+    head {
+        title { +title }
+        meta(name = "viewport", content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no")
+
+        // Favicon and app icons
+        link(rel = "icon", href = "/static/favicon.ico", type = "image/x-icon")
+        link(rel = "apple-touch-icon", href = "/static/apple-touch-icon.png")
+        link(rel = "manifest", href = "/static/manifest.json")
+        meta(name = "theme-color", content = "#4a90d9")
+        meta(name = "apple-mobile-web-app-capable", content = "yes")
+        meta(name = "apple-mobile-web-app-status-bar-style", content = "black-translucent")
+        meta(name = "apple-mobile-web-app-title", content = "game.title".t(lang))
+
+        if (includeHtmx) {
+            script(src = "/static/htmx.min.js") {}
+        }
+        link(rel = "stylesheet", href = "/static/style.css")
+        posthogScript()
+        extraHead?.invoke(this)
+    }
+    body {
+        div("page-wrapper") {
+            div("container") {
+                content()
+            }
+        }
+        pageFooter(lang)
+        cookieConsentBanner(lang)
+        extraBodyContent?.invoke(this)
+    }
+}
+
+/**
  * Renders the main game page HTML structure.
  *
  * This function generates the complete HTML page for the game, including:
@@ -229,381 +285,71 @@ fun HTML.renderGamePage(
     sessionId: String,
     lang: String,
 ) {
-    head {
-        title { +"${"game.title".t(lang)} - ${game.id}" }
-        meta(name = "viewport", content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no")
-
-        // Favicon and app icons
-        link(rel = "icon", href = "/static/favicon.ico", type = "image/x-icon")
-        link(rel = "apple-touch-icon", href = "/static/apple-touch-icon.png")
-        link(rel = "manifest", href = "/static/manifest.json")
-        meta(name = "theme-color", content = "#4a90d9")
-        meta(name = "apple-mobile-web-app-capable", content = "yes")
-        meta(name = "apple-mobile-web-app-status-bar-style", content = "black-translucent")
-        meta(name = "apple-mobile-web-app-title", content = "game.title".t(lang))
-
-        script(src = "/static/htmx.min.js") {}
-        link(rel = "stylesheet", href = "/static/style.css")
-        posthogScript()
-    }
-    body {
-        div("page-wrapper") {
-            div("container") {
-                div("header") {
-                    h1 { +"game.title".t(lang) }
-                    button {
-                        id = "share-btn"
-                        attributes["data-share-text"] = "button.share".t(lang)
-                        attributes["data-copied-text"] = "button.copied".t(lang)
-                        attributes["onclick"] =
-                            """
-                            var btn = this;
-                            var url = window.location.origin + '/game/${game.id}/join';
-                            function showCopied() {
-                                btn.textContent = btn.dataset.copiedText;
-                                btn.classList.add('copied');
-                                setTimeout(function() { btn.textContent = btn.dataset.shareText; btn.classList.remove('copied'); }, 2000);
-                            }
-                            function fallbackCopy() {
-                                var ta = document.createElement('textarea');
-                                ta.value = url;
-                                ta.style.position = 'fixed';
-                                ta.style.left = '-9999px';
-                                document.body.appendChild(ta);
-                                ta.focus();
-                                ta.select();
-                                ta.setSelectionRange(0, 99999);
-                                try { document.execCommand('copy'); showCopied(); } catch(e) { prompt('Copy this link:', url); }
-                                document.body.removeChild(ta);
-                            }
-                            function clipboardCopy() {
-                                if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
-                                    navigator.clipboard.writeText(url).then(showCopied).catch(fallbackCopy);
-                                } else {
-                                    fallbackCopy();
-                                }
-                            }
-                            var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-                            if (isMobile && navigator.share) {
-                                navigator.share({ title: '${"game.title".t(
-                                lang,
-                            )}', text: '${"share.text".t(lang)}', url: url }).catch(function() {});
-                            } else {
-                                clipboardCopy();
-                            }
-                            """.trimIndent().replace("\n", " ")
-                        +"button.share".t(lang)
-                    }
-                }
-
-                div {
-                    id = "game-content"
-                    // Initial content
-                    unsafe { +renderGameState(game, sessionId, lang) }
-                }
-            }
-
-            // Use standard EventSource for SSE with ping/reconnect handling
+    basePage(
+        title = "${"game.title".t(lang)} - ${game.id}",
+        lang = lang,
+        includeHtmx = true,
+        extraBodyContent = {
+            // Load game script and initialize with game ID
+            script(src = "/static/game.js") {}
             script {
-                unsafe {
-                    +"""
-                (function() {
-                    // Update URL to include game ID (for bookmarking/sharing)
-                    if (window.location.pathname !== '/game/${game.id}') {
-                        history.replaceState(null, '', '/game/${game.id}');
-                    }
-                    
-                    var gameContent = document.getElementById('game-content');
-                    var lastPingTime = Date.now();
-                    var eventSource = null;
-                    var pingCheckInterval = null;
-                    var countdownInterval = null;
-                    var previousMarbleCount = null;
-                    var reconnectTimeout = null;
-                    var isConnecting = false;
-                    
-                    // Create animation container if it doesn't exist
-                    function getAnimationContainer() {
-                        var container = document.querySelector('.marble-animation-container');
-                        if (!container) {
-                            container = document.createElement('div');
-                            container.className = 'marble-animation-container';
-                            document.body.appendChild(container);
-                        }
-                        return container;
-                    }
-                    
-                    // Animate marbles flying out (when playing or losing)
-                    function animateMarblesOut(count, startElement, isLost) {
-                        var container = getAnimationContainer();
-                        var rect = startElement.getBoundingClientRect();
-                        var centerX = rect.left + rect.width / 2;
-                        var centerY = rect.top + rect.height / 2;
-                        
-                        for (var i = 0; i < Math.min(count, 10); i++) {
-                            (function(index) {
-                                setTimeout(function() {
-                                    var marble = document.createElement('div');
-                                    marble.className = 'animated-marble fly-out' + (isLost ? ' lost' : '');
-                                    // Spread marbles horizontally
-                                    var offsetX = (index - Math.min(count, 10) / 2) * 20;
-                                    marble.style.left = (centerX + offsetX - 16) + 'px';
-                                    marble.style.top = (centerY - 16) + 'px';
-                                    container.appendChild(marble);
-                                    
-                                    // Remove after animation
-                                    setTimeout(function() {
-                                        marble.remove();
-                                    }, 1200);
-                                }, index * 80);
-                            })(i);
-                        }
-                    }
-                    
-                    // Animate marbles flying in (when receiving)
-                    function animateMarblesIn(count, targetElement) {
-                        var container = getAnimationContainer();
-                        var rect = targetElement.getBoundingClientRect();
-                        var centerX = rect.left + rect.width / 2;
-                        var centerY = rect.top;
-                        
-                        for (var i = 0; i < Math.min(count, 10); i++) {
-                            (function(index) {
-                                setTimeout(function() {
-                                    var marble = document.createElement('div');
-                                    marble.className = 'animated-marble fly-in';
-                                    // Spread marbles horizontally
-                                    var offsetX = (index - Math.min(count, 10) / 2) * 25;
-                                    marble.style.left = (centerX + offsetX - 16) + 'px';
-                                    marble.style.top = (centerY - 16) + 'px';
-                                    container.appendChild(marble);
-                                    
-                                    // Remove after animation
-                                    setTimeout(function() {
-                                        marble.remove();
-                                    }, 1400);
-                                }, index * 120);
-                            })(i);
-                        }
-                    }
-                    
-                    // Get current marble count from status bar
-                    function getCurrentMarbleCount() {
-                        var statusBar = document.querySelector('.your-status strong');
-                        if (statusBar) {
-                            var count = parseInt(statusBar.textContent);
-                            return isNaN(count) ? null : count;
-                        }
-                        return null;
-                    }
-                    
-                    // Check for marble count changes and animate
-                    function checkMarbleChanges() {
-                        var currentCount = getCurrentMarbleCount();
-                        if (currentCount !== null && previousMarbleCount !== null) {
-                            var diff = currentCount - previousMarbleCount;
-                            var statusBar = document.querySelector('.your-status');
-                            var gameArea = document.querySelector('.game-area');
-                            if (diff > 0 && statusBar) {
-                                // Gained marbles - animate them flying in
-                                animateMarblesIn(diff, statusBar);
-                                statusBar.classList.add('marbles-changed', 'marbles-gained');
-                                setTimeout(function() {
-                                    statusBar.classList.remove('marbles-changed', 'marbles-gained');
-                                }, 600);
-                            } else if (diff < 0 && gameArea) {
-                                // Lost marbles - animate them flying away from game area
-                                animateMarblesOut(Math.abs(diff), gameArea, true);
-                                if (statusBar) {
-                                    statusBar.classList.add('marbles-changed', 'marbles-lost');
-                                    setTimeout(function() {
-                                        statusBar.classList.remove('marbles-changed', 'marbles-lost');
-                                    }, 600);
-                                }
-                            }
-                        }
-                        previousMarbleCount = currentCount;
-                    }
-                    
-                    // Countdown timer for disconnected players
-                    function startCountdowns() {
-                        if (countdownInterval) clearInterval(countdownInterval);
-                        countdownInterval = setInterval(function() {
-                            // Handle player disconnect countdowns
-                            var countdowns = document.querySelectorAll('.player-countdown');
-                            countdowns.forEach(function(el) {
-                                var seconds = parseInt(el.dataset.seconds) - 1;
-                                el.dataset.seconds = seconds;
-                                var timerSpan = el.querySelector('.countdown-timer');
-                                if (timerSpan) timerSpan.textContent = seconds + 's';
-                                if (seconds <= 0) {
-                                    // Grace period expired, notify server
-                                    fetch('/game/${game.id}/check-disconnects', { method: 'POST' });
-                                }
-                            });
-                            
-                            // Handle round result countdown (visual only - server auto-advances)
-                            var resultCountdown = document.querySelector('.result-countdown');
-                            if (resultCountdown) {
-                                var seconds = parseInt(resultCountdown.dataset.seconds) - 1;
-                                if (seconds >= 0) {
-                                    resultCountdown.dataset.seconds = seconds;
-                                    var timerSpan = resultCountdown.querySelector('.countdown-timer');
-                                    if (timerSpan) timerSpan.textContent = seconds;
-                                }
-                            }
-                        }, 1000);
-                    }
-                    
-                    // Setup marble picker click handlers
-                    function setupMarblePicker() {
-                        var picker = document.getElementById('marble-picker');
-                        if (!picker) return;
-                        var input = document.getElementById('marble-amount');
-                        var countDisplay = document.getElementById('selected-count');
-                        if (!input || !countDisplay) return;
-                        
-                        picker.onclick = function(e) {
-                            var btn = e.target;
-                            while (btn && !btn.classList.contains('marble-btn')) {
-                                btn = btn.parentElement;
-                            }
-                            if (!btn) return;
-                            
-                            var value = btn.getAttribute('data-value');
-                            input.value = value;
-                            countDisplay.textContent = value;
-                            
-                            var allBtns = picker.getElementsByClassName('marble-btn');
-                            for (var i = 0; i < allBtns.length; i++) {
-                                if (allBtns[i].getAttribute('data-value') === value) {
-                                    allBtns[i].classList.add('selected');
-                                } else {
-                                    allBtns[i].classList.remove('selected');
-                                }
-                            }
-                        };
-                        
-                        // Setup form submit handler for fly-out animation
-                        var form = document.getElementById('place-form');
-                        if (form) {
-                            form.addEventListener('htmx:beforeRequest', function(e) {
-                                var amount = parseInt(input.value) || 1;
-                                var selectedBtn = picker.querySelector('.marble-btn.selected');
-                                if (selectedBtn) {
-                                    animateMarblesOut(amount, selectedBtn);
-                                }
-                            });
-                        }
-                    }
-                    
-                    function connect() {
-                        // Prevent multiple simultaneous connection attempts
-                        if (isConnecting) {
-                            console.log('Connection already in progress, skipping');
-                            return;
-                        }
-                        isConnecting = true;
-                        
-                        // Clear any pending reconnect
-                        if (reconnectTimeout) {
-                            clearTimeout(reconnectTimeout);
-                            reconnectTimeout = null;
-                        }
-                        
-                        // Close existing connection if any
-                        if (eventSource) {
-                            eventSource.close();
-                            eventSource = null;
-                        }
-                        
-                        console.log('SSE connecting...');
-                        eventSource = new EventSource('/game/${game.id}/events');
-                        lastPingTime = Date.now();
-                        
-                        eventSource.addEventListener('open', function(e) {
-                            console.log('SSE connection opened');
-                            isConnecting = false;
-                        });
-                        
-                        eventSource.addEventListener('game-update', function(e) {
-                            console.log('SSE game-update received, updating DOM');
-                            gameContent.innerHTML = e.data;
-                            htmx.process(gameContent);
-                            startCountdowns();
-                            setupMarblePicker();
-                            checkMarbleChanges();
-                            var countdowns = document.querySelectorAll('.player-countdown');
-                            console.log('Found ' + countdowns.length + ' countdown elements');
-                        });
-                        
-                        eventSource.addEventListener('ping', function(e) {
-                            lastPingTime = Date.now();
-                        });
-                        
-                        eventSource.onerror = function(e) {
-                            console.log('SSE connection error, readyState:', eventSource.readyState);
-                            isConnecting = false;
-                            
-                            // Close the broken connection
-                            if (eventSource) {
-                                eventSource.close();
-                                eventSource = null;
-                            }
-                            
-                            // Reconnect after a short delay (not a full page reload)
-                            if (!reconnectTimeout) {
-                                reconnectTimeout = setTimeout(function() {
-                                    reconnectTimeout = null;
-                                    console.log('Attempting SSE reconnect...');
-                                    connect();
-                                }, 1000);
-                            }
-                        };
-                    }
-                    
-                    // Check if we've received a ping recently (within 45 seconds)
-                    pingCheckInterval = setInterval(function() {
-                        var timeSinceLastPing = Date.now() - lastPingTime;
-                        if (timeSinceLastPing > 45000) {
-                            console.log('No ping received for 45s, reconnecting...');
-                            connect();
-                        }
-                    }, 10000);
-                    
-                    // Handle tab visibility changes - refresh state when tab becomes visible
-                    // This fixes sync issues caused by browser throttling background tabs
-                    document.addEventListener('visibilitychange', function() {
-                        if (document.visibilityState === 'visible') {
-                            console.log('Tab became visible, refreshing state...');
-                            connect();
-                        }
-                    });
-                    
-                    // Initial connection and countdowns
-                    connect();
-                    startCountdowns();
-                    setupMarblePicker();
-                    previousMarbleCount = getCurrentMarbleCount();
-                    
-                    // Cleanup on page unload
-                    window.addEventListener('beforeunload', function() {
-                        if (pingCheckInterval) clearInterval(pingCheckInterval);
-                        if (countdownInterval) clearInterval(countdownInterval);
-                        if (reconnectTimeout) clearTimeout(reconnectTimeout);
-                        if (eventSource) eventSource.close();
-                    });
-                })();
-                """
-                }
+                unsafe { +"initGame('${game.id}');" }
             }
-        } // Close page-wrapper
+        },
+    ) {
+        // Game page content
+        div("header") {
+            h1 { +"game.title".t(lang) }
+            button {
+                id = "share-btn"
+                attributes["data-share-text"] = "button.share".t(lang)
+                attributes["data-copied-text"] = "button.copied".t(lang)
+                attributes["onclick"] =
+                    """
+                    var btn = this;
+                    var url = window.location.origin + '/game/${game.id}/join';
+                    function showCopied() {
+                        btn.textContent = btn.dataset.copiedText;
+                        btn.classList.add('copied');
+                        setTimeout(function() { btn.textContent = btn.dataset.shareText; btn.classList.remove('copied'); }, 2000);
+                    }
+                    function fallbackCopy() {
+                        var ta = document.createElement('textarea');
+                        ta.value = url;
+                        ta.style.position = 'fixed';
+                        ta.style.left = '-9999px';
+                        document.body.appendChild(ta);
+                        ta.focus();
+                        ta.select();
+                        ta.setSelectionRange(0, 99999);
+                        try { document.execCommand('copy'); showCopied(); } catch(e) { prompt('Copy this link:', url); }
+                        document.body.removeChild(ta);
+                    }
+                    function clipboardCopy() {
+                        if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+                            navigator.clipboard.writeText(url).then(showCopied).catch(fallbackCopy);
+                        } else {
+                            fallbackCopy();
+                        }
+                    }
+                    var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                    if (isMobile && navigator.share) {
+                        navigator.share({ title: '${"game.title".t(
+                        lang,
+                    )}', text: '${"share.text".t(lang)}', url: url }).catch(function() {});
+                    } else {
+                        clipboardCopy();
+                    }
+                    """.trimIndent().replace("\n", " ")
+                +"button.share".t(lang)
+            }
+        }
 
-        // Footer
-        pageFooter(lang)
-
-        // Cookie consent banner
-        cookieConsentBanner(lang)
+        div {
+            id = "game-content"
+            // Initial content
+            unsafe { +renderGameState(game, sessionId, lang) }
+        }
     }
 }
 
