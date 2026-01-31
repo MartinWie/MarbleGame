@@ -118,7 +118,8 @@ class Game(
     /** All players who have joined (including disconnected ones). */
     val players = ConcurrentHashMap<String, Player>()
 
-    /** Current phase of the game. */
+    /** Current phase of the game. Thread-safe via @Volatile. */
+    @Volatile
     var phase: GamePhase = GamePhase.WAITING_FOR_PLAYERS
 
     /** Index into [playerOrder] for the current player's turn. */
@@ -132,6 +133,16 @@ class Game(
 
     /** Timestamp when round result phase started (for auto-advance countdown). */
     var roundResultTimestamp: Long? = null
+        private set
+
+    /**
+     * Session ID of the winner when game is over. Thread-safe via @Volatile.
+     *
+     * Set when the game transitions to GAME_OVER phase to prevent
+     * new players joining from incorrectly being shown as winners.
+     */
+    @Volatile
+    var winnerSessionId: String? = null
         private set
 
     /** Ordered list of active player session IDs (determines turn order). */
@@ -450,6 +461,8 @@ class Game(
 
         val playersWithMarbles = connectedActivePlayers
         if (playersWithMarbles.size <= 1) {
+            winnerSessionId = playersWithMarbles.firstOrNull()?.sessionId
+                ?: players.values.find { it.isActive }?.sessionId
             phase = GamePhase.GAME_OVER
             return false
         }
@@ -492,10 +505,20 @@ class Game(
     /**
      * Gets the winner of the game.
      *
+     * Returns the player who was determined as winner when the game ended.
+     * The winner is stored when the game transitions to GAME_OVER to prevent
+     * new players joining from incorrectly appearing as winners.
+     *
+     * Falls back to finding the best candidate if winnerSessionId is not set
+     * (for backwards compatibility with tests that directly set phase).
+     *
      * @return The winning player, or null if game not over
      */
     fun getWinner(): Player? {
         if (phase != GamePhase.GAME_OVER) return null
+        // Use stored winner if available
+        winnerSessionId?.let { return players[it] }
+        // Fallback: find best candidate (connected active player, or any active player)
         return connectedActivePlayers.firstOrNull() ?: players.values.find { it.isActive }
     }
 
@@ -525,9 +548,10 @@ class Game(
                 if (currentPlayer?.sessionId == sessionId) {
                     advanceToNextActivePlayer()
                 }
-                val available = availableActivePlayers.size
-                if (available <= 1) {
+                val available = availableActivePlayers
+                if (available.size <= 1) {
                     logger.info("Game {} ended - only 1 player remaining", id)
+                    winnerSessionId = available.firstOrNull()?.sessionId
                     phase = GamePhase.GAME_OVER
                 }
                 return true
@@ -539,7 +563,9 @@ class Game(
                 }
             }
             GamePhase.ROUND_RESULT -> {
-                if (availableActivePlayers.size <= 1) {
+                val available = availableActivePlayers
+                if (available.size <= 1) {
+                    winnerSessionId = available.firstOrNull()?.sessionId
                     phase = GamePhase.GAME_OVER
                     return true
                 }
@@ -618,7 +644,9 @@ class Game(
         }
 
         // Check for game over
-        if (availableActivePlayers.size <= 1) {
+        val available = availableActivePlayers
+        if (available.size <= 1) {
+            winnerSessionId = available.firstOrNull()?.sessionId
             phase = GamePhase.GAME_OVER
         } else if (wasCurrentPlayer) {
             advanceToNextActivePlayer()
@@ -656,6 +684,7 @@ class Game(
         currentMarblesPlaced = 0
         lastRoundResult = null
         roundResultTimestamp = null
+        winnerSessionId = null
 
         val connectedSessionIds =
             players.values

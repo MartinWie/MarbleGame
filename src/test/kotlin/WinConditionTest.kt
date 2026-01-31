@@ -201,4 +201,54 @@ class WinConditionTest {
         // connectedActivePlayers should exclude spectators
         assertEquals(2, game.connectedActivePlayers.size)
     }
+
+
+    @Test
+    fun `new player joining during GAME_OVER does not become winner`() {
+        val game = createGameWithPlayers("Alice", "Bob")
+
+        // Give Alice all marbles except 1 for Bob
+        game.players["creator"]!!.marbles = 19
+        game.players["player1"]!!.marbles = 1
+
+        game.startGame()
+        game.placeMarbles("creator", 1) // Alice places 1 (odd)
+        game.makeGuess("player1", Guess.EVEN) // Bob guesses wrong
+        game.resolveRound()
+        game.nextRound()
+
+        // Game should be over with Alice as winner
+        assertEquals(GamePhase.GAME_OVER, game.phase)
+        assertEquals("Alice", game.getWinner()?.name)
+
+        // Now a new player joins (this would happen via routing during GAME_OVER)
+        game.addPlayer("newplayer", "NewGuy", "en").also { it.connected = true }
+
+        // Winner should still be Alice, NOT the new player
+        assertEquals("Alice", game.getWinner()?.name)
+        assertNotEquals("NewGuy", game.getWinner()?.name)
+    }
+
+    @Test
+    fun `winner is preserved even if they disconnect during GAME_OVER`() {
+        val game = createGameWithPlayers("Alice", "Bob")
+
+        game.players["creator"]!!.marbles = 19
+        game.players["player1"]!!.marbles = 1
+
+        game.startGame()
+        game.placeMarbles("creator", 1)
+        game.makeGuess("player1", Guess.EVEN)
+        game.resolveRound()
+        game.nextRound()
+
+        assertEquals(GamePhase.GAME_OVER, game.phase)
+        assertEquals("Alice", game.getWinner()?.name)
+
+        // Alice disconnects
+        game.players["creator"]!!.connected = false
+
+        // Winner should still be Alice even though she's disconnected
+        assertEquals("Alice", game.getWinner()?.name)
+    }
 }
