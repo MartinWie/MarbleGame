@@ -257,12 +257,11 @@ fun HTML.renderGamePage(
                                 fallbackCopy();
                             }
                         }
-                        if (navigator.share && navigator.canShare && navigator.canShare({ url: url })) {
+                        var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                        if (isMobile && navigator.share) {
                             navigator.share({ title: '${"game.title".t(
                             lang,
-                        )}', text: '${"share.text".t(lang)}', url: url }).catch(clipboardCopy);
-                        } else if (navigator.share) {
-                            navigator.share({ url: url }).catch(clipboardCopy);
+                        )}', text: '${"share.text".t(lang)}', url: url }).catch(function() {});
                         } else {
                             clipboardCopy();
                         }
