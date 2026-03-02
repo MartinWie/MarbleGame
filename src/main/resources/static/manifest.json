@@ -1,7 +1,7 @@
 {
-  "name": "Marble Game",
-  "short_name": "Marbles",
-  "description": "A multiplayer marble guessing game",
+  "name": "Games",
+  "short_name": "Games",
+  "description": "A multiplayer mini games platform",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1a1a2e",

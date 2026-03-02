@@ -76,7 +76,7 @@ class ApplicationTest {
                 }.apply {
                     assertEquals(HttpStatusCode.OK, status)
                     val body = bodyAsText()
-                    assertTrue(body.contains("Murmelspiel") || body.contains("Neues Spiel"))
+                    assertTrue(body.contains("Spiele") || body.contains("Murmelspiel erstellen"))
                 }
         }
 
@@ -92,7 +92,7 @@ class ApplicationTest {
                 }.apply {
                     assertEquals(HttpStatusCode.OK, status)
                     val body = bodyAsText()
-                    assertTrue(body.contains("Marble Game") || body.contains("Create"))
+                    assertTrue(body.contains("Games") || body.contains("Create"))
                 }
         }
 
@@ -105,7 +105,7 @@ class ApplicationTest {
             client.get("/").apply {
                 assertEquals(HttpStatusCode.OK, status)
                 val body = bodyAsText()
-                assertTrue(body.contains("Marble Game") || body.contains("Create"))
+                assertTrue(body.contains("Games") || body.contains("Create"))
             }
         }
 
@@ -121,7 +121,7 @@ class ApplicationTest {
                 }.apply {
                     assertEquals(HttpStatusCode.OK, status)
                     val body = bodyAsText()
-                    assertTrue(body.contains("Murmelspiel") || body.contains("Neues Spiel"))
+                    assertTrue(body.contains("Spiele") || body.contains("Murmelspiel erstellen"))
                 }
         }
 
@@ -138,7 +138,7 @@ class ApplicationTest {
                     assertEquals(HttpStatusCode.OK, status)
                     val body = bodyAsText()
                     // Falls back to English since French is not supported
-                    assertTrue(body.contains("Marble Game") || body.contains("Create"))
+                    assertTrue(body.contains("Games") || body.contains("Create"))
                 }
         }
 
@@ -155,7 +155,7 @@ class ApplicationTest {
                     assertEquals(HttpStatusCode.OK, status)
                     // Should fall back to English
                     val body = bodyAsText()
-                    assertTrue(body.contains("Marble Game") || body.contains("Create"))
+                    assertTrue(body.contains("Games") || body.contains("Create"))
                 }
         }
 

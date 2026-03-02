@@ -25,8 +25,9 @@ async function createPlayer(browser: Browser, name: string): Promise<{ context: 
  */
 async function createGame(page: Page, playerName: string): Promise<string> {
   await page.goto('/');
-  await page.locator('input[name="playerName"]').fill(playerName);
-  await page.locator('button[type="submit"]').click();
+  const marblesForm = page.locator('#create-form-marbles');
+  await marblesForm.locator('input[name="playerName"]').fill(playerName);
+  await marblesForm.getByRole('button', { name: 'Create Game' }).click();
   await expect(page).toHaveURL(/\/game\/[a-f0-9]{8}/);
   return page.url();
 }
@@ -334,7 +335,7 @@ test.describe('Error Handling', () => {
     const response = await page.goto('/game/00000000/join');
     
     expect(response?.status()).toBe(200);
-    await expect(page.locator('input[name="playerName"]')).toBeVisible();
+    await expect(page.locator('input[name="playerName"]').first()).toBeVisible();
   });
 
   test('share button is visible for host', async ({ browser }) => {

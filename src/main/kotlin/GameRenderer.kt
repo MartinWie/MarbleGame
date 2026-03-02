@@ -243,6 +243,7 @@ internal fun HTML.basePage(
     title: String,
     lang: String,
     includeHtmx: Boolean = false,
+    containerClasses: String = "container",
     extraHead: (HEAD.() -> Unit)? = null,
     extraBodyContent: (BODY.() -> Unit)? = null,
     content: DIV.() -> Unit,
@@ -269,7 +270,7 @@ internal fun HTML.basePage(
     }
     body {
         div("page-wrapper") {
-            div("container") {
+            div(containerClasses) {
                 content()
             }
         }

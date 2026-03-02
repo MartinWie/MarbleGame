@@ -61,22 +61,76 @@ fun Application.configureRouting() {
                         }
                     }
 
-                    div("card") {
-                        h2 { +"home.createGame".t(lang) }
-                        form {
-                            hxPost("/game/create")
-                            hxTarget("body")
+                    div("card mode-selector-card") {
+                        h2 { +"home.chooseMode".t(lang) }
+                        p("hint") { +"home.chooseModeHint".t(lang) }
 
-                            div("form-group") {
-                                label { +"home.yourName".t(lang) }
-                                input(type = InputType.text, name = "playerName") {
-                                    required = true
-                                    placeholder = "home.namePlaceholder".t(lang)
-                                    value = savedName
-                                    maxLength = MAX_PLAYER_NAME_LENGTH.toString()
-                                }
+                        div("mode-grid") {
+                            div("mode-tile active") {
+                                attributes["data-mode"] = "marbles"
+                                attributes["onclick"] =
+                                    """
+                                    document.querySelectorAll('.mode-tile').forEach(function(x){x.classList.remove('active');});
+                                    this.classList.add('active');
+                                    document.getElementById('create-form-marbles').classList.add('active');
+                                    document.getElementById('create-form-chess').classList.remove('active');
+                                    """.trimIndent().replace("\n", " ")
+                                span("mode-icon") { +"●●" }
+                                h3 { +"home.mode.marbles".t(lang) }
+                                p { +"home.createGameHint".t(lang) }
                             }
-                            button(type = ButtonType.submit, classes = "btn btn-primary") { +"button.create".t(lang) }
+
+                            div("mode-tile") {
+                                attributes["data-mode"] = "chess"
+                                attributes["onclick"] =
+                                    """
+                                    document.querySelectorAll('.mode-tile').forEach(function(x){x.classList.remove('active');});
+                                    this.classList.add('active');
+                                    document.getElementById('create-form-marbles').classList.remove('active');
+                                    document.getElementById('create-form-chess').classList.add('active');
+                                    """.trimIndent().replace("\n", " ")
+                                span("mode-icon") { +"♚" }
+                                h3 { +"home.mode.chess".t(lang) }
+                                p { +"home.createChessHint".t(lang) }
+                            }
+                        }
+
+                        div("create-mode-forms") {
+                            form {
+                                id = "create-form-marbles"
+                                classes = setOf("mode-form", "active")
+                                hxPost("/game/create")
+                                hxTarget("body")
+
+                                div("form-group") {
+                                    label { +"home.yourName".t(lang) }
+                                    input(type = InputType.text, name = "playerName") {
+                                        required = true
+                                        placeholder = "home.namePlaceholder".t(lang)
+                                        value = savedName
+                                        maxLength = MAX_PLAYER_NAME_LENGTH.toString()
+                                    }
+                                }
+                                button(type = ButtonType.submit, classes = "btn btn-primary") { +"button.create".t(lang) }
+                            }
+
+                            form {
+                                id = "create-form-chess"
+                                classes = setOf("mode-form")
+                                hxPost("/chess/create")
+                                hxTarget("body")
+
+                                div("form-group") {
+                                    label { +"home.yourName".t(lang) }
+                                    input(type = InputType.text, name = "playerName") {
+                                        required = true
+                                        placeholder = "home.namePlaceholder".t(lang)
+                                        value = savedName
+                                        maxLength = MAX_PLAYER_NAME_LENGTH.toString()
+                                    }
+                                }
+                                button(type = ButtonType.submit, classes = "btn btn-primary") { +"button.createChess".t(lang) }
+                            }
                         }
                     }
                 }
@@ -178,6 +232,31 @@ fun Application.configureRouting() {
             // Use HX-Redirect for HTMX requests to force full page navigation
             // This ensures scripts on the game page are properly loaded and executed
             val redirectUrl = "/game/${game.id}"
+            if (call.request.headers["HX-Request"] == "true") {
+                call.response.header("HX-Redirect", redirectUrl)
+                call.respond(HttpStatusCode.OK)
+            } else {
+                call.respondRedirect(redirectUrl)
+            }
+        }
+
+        // Create a new chess game
+        post("/chess/create") {
+            val session =
+                call.sessions.get<UserSession>() ?: run {
+                    call.respondText("Session not found", status = HttpStatusCode.BadRequest)
+                    return@post
+                }
+            val params = call.receiveParameters()
+            val playerName = params["playerName"]?.trim()?.take(MAX_PLAYER_NAME_LENGTH)?.takeIf { it.isNotEmpty() } ?: "Player"
+            val lang = call.getLanguage()
+
+            call.sessions.set(session.copy(playerName = playerName))
+
+            val game = ChessGameManager.createGame(session.id)
+            game.addPlayer(session.id, playerName, lang)
+
+            val redirectUrl = "/chess/${game.id}"
             if (call.request.headers["HX-Request"] == "true") {
                 call.response.header("HX-Redirect", redirectUrl)
                 call.respond(HttpStatusCode.OK)
@@ -300,6 +379,99 @@ fun Application.configureRouting() {
             }
         }
 
+        // Direct join via URL for chess games
+        get("/chess/{gameId}/join") {
+            val session = call.sessions.get<UserSession>()
+            val savedName = session?.playerName ?: ""
+
+            val gameId =
+                call.parameters["gameId"] ?: run {
+                    call.respondRedirect("/")
+                    return@get
+                }
+            val game =
+                ChessGameManager.getGame(gameId) ?: run {
+                    call.respondRedirect("/?error=game_not_found")
+                    return@get
+                }
+
+            if (session != null && savedName.isNotEmpty()) {
+                if (game.players[session.id] == null) {
+                    val lang = call.getLanguage()
+                    game.addPlayer(session.id, savedName, lang)
+                    game.broadcastToAllConnected(::renderChessState)
+                }
+                call.respondRedirect("/chess/$gameId")
+                return@get
+            }
+
+            val lang = call.getLanguage()
+            call.respondHtml {
+                basePage("join.title".t(lang), lang, includeHtmx = true) {
+                    h1 { +"chess.join.title".t(lang) }
+
+                    div("card") {
+                        p("hint") { +"chess.join.spectatorHint".t(lang) }
+                        form {
+                            hxPost("/chess/join")
+                            hxTarget("body")
+
+                            input(type = InputType.hidden, name = "gameId") { value = gameId }
+                            div("form-group") {
+                                label { +"home.yourName".t(lang) }
+                                input(type = InputType.text, name = "playerName") {
+                                    required = true
+                                    placeholder = "home.namePlaceholder".t(lang)
+                                    value = savedName
+                                    maxLength = MAX_PLAYER_NAME_LENGTH.toString()
+                                }
+                            }
+                            button(type = ButtonType.submit, classes = "btn btn-primary") {
+                                +"button.join".t(lang)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Join an existing chess game
+        post("/chess/join") {
+            val session =
+                call.sessions.get<UserSession>() ?: run {
+                    call.respondText("Session not found", status = HttpStatusCode.BadRequest)
+                    return@post
+                }
+            val params = call.receiveParameters()
+            val playerName = params["playerName"]?.trim()?.take(MAX_PLAYER_NAME_LENGTH)?.takeIf { it.isNotEmpty() } ?: "Player"
+            val gameId =
+                params["gameId"]?.trim()?.lowercase() ?: run {
+                    call.respondText("Game ID required", status = HttpStatusCode.BadRequest)
+                    return@post
+                }
+
+            call.sessions.set(session.copy(playerName = playerName))
+
+            val game =
+                ChessGameManager.getGame(gameId) ?: run {
+                    call.respondRedirect("/?error=game_not_found")
+                    return@post
+                }
+
+            val lang = call.getLanguage()
+            game.addPlayer(session.id, playerName, lang)
+
+            game.broadcastToAllConnected(::renderChessState)
+
+            val redirectUrl = "/chess/${game.id}"
+            if (call.request.headers["HX-Request"] == "true") {
+                call.response.header("HX-Redirect", redirectUrl)
+                call.respond(HttpStatusCode.OK)
+            } else {
+                call.respondRedirect(redirectUrl)
+            }
+        }
+
         // Game page
         get("/game/{gameId}") {
             val session =
@@ -335,6 +507,44 @@ fun Application.configureRouting() {
             val lang = call.getLanguage()
             call.respondHtml {
                 renderGamePage(game, session.id, lang)
+            }
+        }
+
+        // Chess game page
+        get("/chess/{gameId}") {
+            val session =
+                call.sessions.get<UserSession>() ?: run {
+                    call.respondRedirect("/")
+                    return@get
+                }
+            val gameId =
+                call.parameters["gameId"] ?: run {
+                    call.respondRedirect("/")
+                    return@get
+                }
+            val game =
+                ChessGameManager.getGame(gameId) ?: run {
+                    val lang = call.getLanguage()
+                    call.respondHtml(HttpStatusCode.NotFound) {
+                        basePage("error.gameNotFound".t(lang), lang) {
+                            div("card") {
+                                h1 { +"error.gameNotFound".t(lang) }
+                                a(href = "/", classes = "btn btn-primary") { +"button.goBack".t(lang) }
+                            }
+                        }
+                    }
+                    return@get
+                }
+
+            val player = game.players[session.id]
+            if (player == null) {
+                call.respondRedirect("/chess/$gameId/join")
+                return@get
+            }
+
+            val lang = call.getLanguage()
+            call.respondHtml {
+                renderChessPage(game, session.id, lang)
             }
         }
 
@@ -452,6 +662,83 @@ fun Application.configureRouting() {
             }
         }
 
+        // SSE endpoint for chess updates
+        sse("/chess/{gameId}/events") {
+            val session = call.sessions.get<UserSession>() ?: return@sse
+            val gameId = call.parameters["gameId"] ?: return@sse
+            val game = ChessGameManager.getGame(gameId) ?: return@sse
+            val player = game.players[session.id] ?: return@sse
+            val lang = call.getLanguage()
+
+            player.lang = lang
+            while (player.channel.tryReceive().isSuccess) {
+                // Discard old messages
+            }
+
+            val connectionId = player.startNewConnection()
+            game.handlePlayerReconnect(session.id)
+
+            var connectionAlive = true
+            val pingJob =
+                launch {
+                    while (isActive && connectionAlive) {
+                        delay(SSE_PING_INTERVAL_MS)
+                        try {
+                            send(ServerSentEvent("ping", event = "ping"))
+                        } catch (_: Exception) {
+                            connectionAlive = false
+                            player.channel.trySend("__CONNECTION_CHECK__")
+                            break
+                        }
+                    }
+                }
+
+            try {
+                game.players.values
+                    .filter { it.connected && it.sessionId != session.id }
+                    .forEach { other ->
+                        other.channel.trySend(renderChessState(game, other.sessionId, other.lang))
+                    }
+
+                send(ServerSentEvent(renderChessState(game, session.id, lang), event = "chess-update"))
+
+                val refreshJob =
+                    launch {
+                        delay(100)
+                        if (connectionId == player.currentConnectionId && connectionAlive) {
+                            try {
+                                send(ServerSentEvent(renderChessState(game, session.id, lang), event = "chess-update"))
+                            } catch (_: Exception) {
+                                // Connection might be closed, ignore
+                            }
+                        }
+                    }
+
+                for (message in player.channel) {
+                    if (!connectionAlive) break
+                    if (message == "__CONNECTION_CHECK__") continue
+                    if (connectionId != player.currentConnectionId) break
+                    send(ServerSentEvent(message, event = "chess-update"))
+                }
+
+                refreshJob.cancel()
+            } catch (_: ClosedReceiveChannelException) {
+                // Normal disconnect
+            } catch (e: Exception) {
+                logger.warn("Chess SSE error for {}: {}", player.name, e.message)
+            } finally {
+                pingJob.cancel()
+                player.endConnection(connectionId)
+
+                if (!player.connected) {
+                    val changed = game.handlePlayerDisconnect(session.id)
+                    if (changed) {
+                        game.broadcastToAllConnected(::renderChessState)
+                    }
+                }
+            }
+        }
+
         // Check for expired grace periods (called by client countdown timer)
         post("/game/{gameId}/check-disconnects") {
             val gameId = call.parameters["gameId"] ?: return@post
@@ -473,6 +760,30 @@ fun Application.configureRouting() {
 
             if (stateChanged) {
                 game.broadcastToAllConnected(::renderGameState)
+            }
+
+            call.respondText("OK")
+        }
+
+        // Check for expired grace periods in chess
+        post("/chess/{gameId}/check-disconnects") {
+            val gameId = call.parameters["gameId"] ?: return@post
+            val game = ChessGameManager.getGame(gameId) ?: return@post
+
+            var stateChanged = false
+            val expiredPlayers =
+                game.allPlayers
+                    .filter { !it.connected && !it.isWithinGracePeriod() }
+                    .map { it.sessionId }
+
+            expiredPlayers.forEach { sessionId ->
+                if (game.handleGracePeriodExpired(sessionId)) {
+                    stateChanged = true
+                }
+            }
+
+            if (stateChanged) {
+                game.broadcastToAllConnected(::renderChessState)
             }
 
             call.respondText("OK")
@@ -574,6 +885,56 @@ fun Application.configureRouting() {
             game.broadcastToAllConnected(::renderGameState)
 
             call.respondText("OK")
+        }
+
+        // Make a chess move
+        post("/chess/{gameId}/move") {
+            val session = call.sessions.get<UserSession>() ?: return@post
+            val gameId = call.parameters["gameId"] ?: return@post
+            val game = ChessGameManager.getGame(gameId) ?: return@post
+            val params = call.receiveParameters()
+            val from = params["from"] ?: return@post
+            val to = params["to"] ?: return@post
+
+            if (!game.makeMove(session.id, from, to)) {
+                call.respondText("Invalid move", status = HttpStatusCode.BadRequest)
+                return@post
+            }
+
+            game.broadcastToAllConnected(::renderChessState)
+            call.respondText("OK")
+        }
+
+        // Restart chess game
+        post("/chess/{gameId}/new-game") {
+            val session =
+                call.sessions.get<UserSession>() ?: run {
+                    call.respondText("Unauthorized", status = HttpStatusCode.Unauthorized)
+                    return@post
+                }
+            val gameId = call.parameters["gameId"] ?: return@post
+            val game = ChessGameManager.getGame(gameId) ?: return@post
+
+            if (game.creatorSessionId != session.id) {
+                call.respondText("Only the creator can start a new game", status = HttpStatusCode.Forbidden)
+                return@post
+            }
+
+            game.resetForNewGame()
+            game.broadcastToAllConnected(::renderChessState)
+
+            call.respondText("OK")
+        }
+
+        // Get legal moves for selected chess piece
+        get("/chess/{gameId}/legal-moves") {
+            val session = call.sessions.get<UserSession>() ?: return@get
+            val gameId = call.parameters["gameId"] ?: return@get
+            val from = call.request.queryParameters["from"] ?: return@get
+            val game = ChessGameManager.getGame(gameId) ?: return@get
+
+            val moves = game.legalMovesFor(session.id, from)
+            call.respondText(moves.joinToString(","))
         }
 
         // Static resources

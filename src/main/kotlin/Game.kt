@@ -607,7 +607,9 @@ class Game(
         // In game over, only transfer creator if needed (don't remove player)
         if (phase == GamePhase.GAME_OVER) {
             if (sessionId == creatorSessionId) {
-                val newCreator = players.values.firstOrNull { it.connected && it.sessionId != sessionId }
+                val newCreator =
+                    players.values.firstOrNull { it.connected && it.sessionId != sessionId }
+                        ?: players.values.firstOrNull { it.sessionId != sessionId }
                 if (newCreator != null) {
                     creatorSessionId = newCreator.sessionId
                     logger.info("Game {} creator transferred to '{}' (game over)", id, newCreator.name)
