@@ -22,38 +22,57 @@ fun HTML.renderChessPage(
     ) {
         div("header") {
             h1 { +"chess.title".t(lang) }
-            button(classes = "btn btn-secondary") {
-                id = "share-btn"
-                attributes["data-share-text"] = "button.share".t(lang)
-                attributes["data-copied-text"] = "button.copied".t(lang)
-                attributes["onclick"] =
-                    """
-                    var btn = this;
-                    var url = window.location.origin + '/chess/${game.id}/join';
-                    function showCopied() {
-                        btn.textContent = btn.dataset.copiedText;
-                        btn.classList.add('copied');
-                        setTimeout(function() { btn.textContent = btn.dataset.shareText; btn.classList.remove('copied'); }, 2000);
-                    }
-                    function fallbackCopy() {
-                        var ta = document.createElement('textarea');
-                        ta.value = url;
-                        ta.style.position = 'fixed';
-                        ta.style.left = '-9999px';
-                        document.body.appendChild(ta);
-                        ta.focus();
-                        ta.select();
-                        ta.setSelectionRange(0, 99999);
-                        try { document.execCommand('copy'); showCopied(); } catch(e) { prompt('Copy this link:', url); }
-                        document.body.removeChild(ta);
-                    }
-                    if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
-                        navigator.clipboard.writeText(url).then(showCopied).catch(fallbackCopy);
-                    } else {
-                        fallbackCopy();
-                    }
-                    """.trimIndent().replace("\n", " ")
-                +"button.share".t(lang)
+            div("header-actions") {
+                button(classes = "btn btn-secondary") {
+                    id = "share-btn"
+                    attributes["data-share-text"] = "button.share".t(lang)
+                    attributes["data-copied-text"] = "button.copied".t(lang)
+                    attributes["data-share-title"] = "chess.title".t(lang)
+                    attributes["data-share-message"] = "share.text".t(lang)
+                    attributes["onclick"] =
+                        """
+                        var btn = this;
+                        var url = window.location.origin + '/chess/${game.id}/join';
+                        function nativeShare() {
+                            var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                            if (isMobile && navigator.share) {
+                                return navigator.share({ title: btn.dataset.shareTitle || '', text: btn.dataset.shareMessage || '', url: url });
+                            }
+                            return Promise.reject(new Error('native-share-not-available'));
+                        }
+                        function showCopied() {
+                            btn.textContent = btn.dataset.copiedText;
+                            btn.classList.add('copied');
+                            setTimeout(function() { btn.textContent = btn.dataset.shareText; btn.classList.remove('copied'); }, 2000);
+                        }
+                        function fallbackCopy() {
+                            var ta = document.createElement('textarea');
+                            ta.value = url;
+                            ta.style.position = 'fixed';
+                            ta.style.left = '-9999px';
+                            document.body.appendChild(ta);
+                            ta.focus();
+                            ta.select();
+                            ta.setSelectionRange(0, 99999);
+                            try { document.execCommand('copy'); showCopied(); } catch(e) { prompt('Copy this link:', url); }
+                            document.body.removeChild(ta);
+                        }
+                        function clipboardCopy() {
+                            if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+                                navigator.clipboard.writeText(url).then(showCopied).catch(fallbackCopy);
+                            } else {
+                                fallbackCopy();
+                            }
+                        }
+                        var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                        if (isMobile && navigator.share) {
+                            nativeShare().catch(function() {});
+                        } else {
+                            clipboardCopy();
+                        }
+                        """.trimIndent().replace("\n", " ")
+                    +"button.share".t(lang)
+                }
             }
         }
 
@@ -131,17 +150,15 @@ fun renderChessState(
                             yourColor == game.turn -> p("turn-line turn-your") { +"chess.turn.yours".t(lang) }
                             else -> p("turn-line turn-wait") { +"chess.turn.wait".t(lang, turnText) }
                         }
-                        if (checkedKingSquare != null) {
-                            p("check-alert") { +"chess.check".t(lang) }
-                        }
+                        p("check-alert") { +(if (checkedKingSquare != null) "chess.check".t(lang) else "") }
 
-                        if (yourColor != null && yourColor == game.turn) {
+                        if (yourColor != null) {
                             renderMoveForm(game, lang)
-                        } else if (yourColor == null) {
+                        } else {
                             p("hint") { +"chess.spectator.hint".t(lang) }
                         }
 
-                        renderBoard(game, yourColor ?: ChessColor.WHITE, checkedKingSquare)
+                        renderBoard(game, yourColor ?: ChessColor.WHITE, checkedKingSquare, true)
                     }
                 }
 
@@ -170,7 +187,7 @@ fun renderChessState(
                             } else {
                                 null
                             }
-                        renderBoard(game, yourColor ?: ChessColor.WHITE, checkmatedKingSquare)
+                        renderBoard(game, yourColor ?: ChessColor.WHITE, checkmatedKingSquare, true)
                         if (isCreator) {
                             button(classes = "btn btn-primary") {
                                 hxPost("/chess/${game.id}/new-game")
@@ -215,16 +232,19 @@ private fun DIV.renderBoard(
     game: ChessGame,
     perspective: ChessColor,
     markedKingSquare: String? = null,
+    showLastMove: Boolean = true,
 ) {
     val files = "abcdefgh"
     val fileOrder = if (perspective == ChessColor.WHITE) files.toList() else files.reversed().toList()
     val rankOrder = if (perspective == ChessColor.WHITE) (8 downTo 1).toList() else (1..8).toList()
 
     div("chess-board-shell") {
+        id = "chess-board-shell"
         div("chess-board") {
             attributes["data-last-move-meta"] = game.lastMoveMeta ?: ""
             attributes["data-perspective"] = if (perspective == ChessColor.WHITE) "white" else "black"
             attributes["data-checked-king"] = markedKingSquare ?: ""
+            attributes["data-show-last-move"] = if (showLastMove) "1" else "0"
             for (rank in rankOrder) {
                 for (file in fileOrder) {
                     val square = "$file$rank"
@@ -254,17 +274,17 @@ private fun DIV.renderBoard(
 
 private fun pieceToUnicode(piece: Char?): String? =
     when (piece) {
-        'K' -> "♔"
-        'Q' -> "♕"
-        'R' -> "♖"
-        'B' -> "♗"
-        'N' -> "♘"
-        'P' -> "♙"
-        'k' -> "♚"
-        'q' -> "♛"
-        'r' -> "♜"
-        'b' -> "♝"
-        'n' -> "♞"
-        'p' -> "♟"
+        'K' -> "♔\uFE0E"
+        'Q' -> "♕\uFE0E"
+        'R' -> "♖\uFE0E"
+        'B' -> "♗\uFE0E"
+        'N' -> "♘\uFE0E"
+        'P' -> "♙\uFE0E"
+        'k' -> "♚\uFE0E"
+        'q' -> "♛\uFE0E"
+        'r' -> "♜\uFE0E"
+        'b' -> "♝\uFE0E"
+        'n' -> "♞\uFE0E"
+        'p' -> "♟\uFE0E"
         else -> null
     }

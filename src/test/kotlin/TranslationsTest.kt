@@ -11,19 +11,19 @@ class TranslationsTest {
     @Test
     fun `get returns English translation for en language`() {
         val result = Translations.get("en", "game.title")
-        assertEquals("Games", result)
+        assertEquals("Marble Game", result)
     }
 
     @Test
     fun `get returns German translation for de language`() {
         val result = Translations.get("de", "game.title")
-        assertEquals("Spiele", result)
+        assertEquals("Murmelspiel", result)
     }
 
     @Test
     fun `get falls back to English for unknown language`() {
         val result = Translations.get("fr", "game.title")
-        assertEquals("Games", result)
+        assertEquals("Marble Game", result)
     }
 
     @Test
@@ -47,7 +47,7 @@ class TranslationsTest {
     @Test
     fun `get returns template without formatting when no args provided`() {
         val result = Translations.get("en", "game.title")
-        assertEquals("Games", result)
+        assertEquals("Marble Game", result)
     }
 
     @Test
@@ -61,13 +61,13 @@ class TranslationsTest {
     @Test
     fun `t extension returns English translation`() {
         val result = "game.title".t("en")
-        assertEquals("Games", result)
+        assertEquals("Marble Game", result)
     }
 
     @Test
     fun `t extension returns German translation`() {
         val result = "game.title".t("de")
-        assertEquals("Spiele", result)
+        assertEquals("Murmelspiel", result)
     }
 
     @Test

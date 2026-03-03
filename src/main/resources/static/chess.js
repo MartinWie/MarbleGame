@@ -21,6 +21,7 @@ function initChess(gameId) {
     var touchMoved = false;
     var touchFrom = null;
     var touchActive = false;
+    var touchHandledOnStart = false;
     var lastTouchHandledAt = 0;
     var lastTouchHandledSquare = null;
     var lastUpdateAt = Date.now();
@@ -152,6 +153,7 @@ function initChess(gameId) {
         currentBoard.setAttribute('data-last-move-meta', incomingBoard.getAttribute('data-last-move-meta') || '');
         currentBoard.setAttribute('data-perspective', incomingBoard.getAttribute('data-perspective') || 'white');
         currentBoard.setAttribute('data-checked-king', incomingBoard.getAttribute('data-checked-king') || '');
+        currentBoard.setAttribute('data-show-last-move', incomingBoard.getAttribute('data-show-last-move') || '0');
 
         currentBoard.querySelectorAll('.chess-square').forEach(function(squareEl) {
             var square = squareEl.getAttribute('data-square');
@@ -171,6 +173,8 @@ function initChess(gameId) {
                 currentPieceEl.textContent = incomingPieceEl.textContent || '';
             }
         });
+
+        applyHighlights();
     }
 
     function updateMoveUI() {
@@ -252,6 +256,7 @@ function initChess(gameId) {
         }, 220);
     }
 
+
     function showToast(message) {
         if (!message) return;
 
@@ -290,7 +295,7 @@ function initChess(gameId) {
 
     function clearHighlights() {
         document.querySelectorAll('.chess-square').forEach(function(square) {
-            square.classList.remove('selected', 'legal-target', 'capture-target');
+            square.classList.remove('selected', 'legal-target', 'capture-target', 'last-move-from', 'last-move-to');
         });
     }
 
@@ -302,6 +307,25 @@ function initChess(gameId) {
         if (checkedKingSquare) {
             var checkedEl = document.querySelector('.chess-square[data-square="' + checkedKingSquare + '"]');
             if (checkedEl) checkedEl.classList.add('checked-king');
+            // Check indication takes precedence over last move highlight.
+            return;
+        }
+
+        if (boardEl && boardEl.getAttribute('data-show-last-move') === '1') {
+            var moveMeta = boardEl.getAttribute('data-last-move-meta') || '';
+            if (moveMeta.indexOf(':') !== -1) {
+                var movePart = moveMeta.split(':')[1] || '';
+                var parts = movePart.split('-');
+                if (parts.length === 2) {
+                    var fromEl = document.querySelector('.chess-square[data-square="' + parts[0] + '"]');
+                    var toEl = document.querySelector('.chess-square[data-square="' + parts[1] + '"]');
+                    if (!fromEl || !toEl) {
+                        return;
+                    }
+                    if (fromEl) fromEl.classList.add('last-move-from');
+                    if (toEl) toEl.classList.add('last-move-to');
+                }
+            }
         }
 
         if (selectedFrom) {
@@ -345,6 +369,8 @@ function initChess(gameId) {
         var from = parts[0];
         var to = parts[1];
 
+        animatePieceTravel(kind, from, to);
+
         if (animationTimeout) {
             clearTimeout(animationTimeout);
             animationTimeout = null;
@@ -387,7 +413,62 @@ function initChess(gameId) {
             document.querySelectorAll('.chess-square').forEach(function(el) {
                 el.classList.remove('moved', 'captured');
             });
-        }, 340);
+        }, 640);
+    }
+
+    function animatePieceTravel(kind, from, to) {
+        var fromEl = document.querySelector('.chess-square[data-square="' + from + '"]');
+        var toEl = document.querySelector('.chess-square[data-square="' + to + '"]');
+        var boardShell = document.getElementById('chess-board-shell');
+        if (!fromEl || !toEl || !boardShell) return;
+
+        var pieceEl = toEl.querySelector('.chess-piece');
+        if (!pieceEl || !pieceEl.textContent) return;
+
+        boardShell.classList.add('animating');
+
+        var fromRect = fromEl.getBoundingClientRect();
+        var toRect = toEl.getBoundingClientRect();
+        var piece = document.createElement('div');
+        var pieceColorClass = '';
+        if (pieceEl.classList.contains('piece-white')) pieceColorClass = ' piece-white';
+        else if (pieceEl.classList.contains('piece-black')) pieceColorClass = ' piece-black';
+        piece.className = 'move-trail-piece' + pieceColorClass;
+        piece.textContent = pieceEl.textContent;
+        piece.style.left = (fromRect.left + fromRect.width / 2) + 'px';
+        piece.style.top = (fromRect.top + fromRect.height / 2) + 'px';
+        document.body.appendChild(piece);
+
+        requestAnimationFrame(function() {
+            piece.style.transform = 'translate(' + (toRect.left - fromRect.left) + 'px,' + (toRect.top - fromRect.top) + 'px) translate(-50%, -50%) scale(1.04)';
+            piece.style.opacity = '0.92';
+        });
+
+        if (kind === 'capture' || kind === 'enpassant') {
+            var capturedSquare = to;
+            if (kind === 'enpassant') {
+                var fromRank = parseInt(from[1], 10);
+                var toRank = parseInt(to[1], 10);
+                var capturedRank = fromRank;
+                if (toRank > fromRank) capturedRank = toRank - 1;
+                if (toRank < fromRank) capturedRank = toRank + 1;
+                capturedSquare = to[0] + String(capturedRank);
+            }
+            var capturedEl = document.querySelector('.chess-square[data-square="' + capturedSquare + '"]');
+            if (capturedEl) {
+                var spark = document.createElement('div');
+                spark.className = 'capture-spark';
+                capturedEl.appendChild(spark);
+                setTimeout(function() {
+                    if (spark.parentNode) spark.parentNode.removeChild(spark);
+                }, 420);
+            }
+        }
+
+        setTimeout(function() {
+            if (piece.parentNode) piece.parentNode.removeChild(piece);
+            boardShell.classList.remove('animating');
+        }, 520);
     }
 
     function fetchLegalMoves(fromSquare) {
@@ -523,6 +604,16 @@ function initChess(gameId) {
                 }
             });
 
+            squareEl.addEventListener('dragenter', function(ev) {
+                if (!draggingFrom || !legalTargetSet[square]) return;
+                ev.preventDefault();
+                squareEl.classList.add('drag-hover');
+            });
+
+            squareEl.addEventListener('dragleave', function() {
+                squareEl.classList.remove('drag-hover');
+            });
+
             squareEl.addEventListener('drop', function(ev) {
                 if (!draggingFrom) return;
                 ev.preventDefault();
@@ -531,6 +622,7 @@ function initChess(gameId) {
                 applyHighlights();
                 updateMoveUI();
                 submitMove(selectedFrom, square);
+                squareEl.classList.remove('drag-hover');
                 hideCoachmark();
                 localStorage.setItem('chess_hint_seen', '1');
             });
@@ -539,6 +631,7 @@ function initChess(gameId) {
                 var pieceEl = squareEl.querySelector('.chess-piece');
                 draggingFrom = null;
                 if (pieceEl) pieceEl.classList.remove('dragging');
+                document.querySelectorAll('.chess-square.drag-hover').forEach(function(el) { el.classList.remove('drag-hover'); });
                 if (dragGhost && dragGhost.parentNode) {
                     dragGhost.parentNode.removeChild(dragGhost);
                 }
@@ -549,7 +642,13 @@ function initChess(gameId) {
                 touchActive = true;
                 touchMoved = false;
                 touchFrom = square;
-                if (selectedFrom && selectedFrom !== square && !currentPiece()) {
+                touchHandledOnStart = false;
+                if (selectedFrom === square) {
+                    activateSquare(square, currentPiece)
+                    lastTouchHandledAt = Date.now();
+                    lastTouchHandledSquare = square;
+                    touchHandledOnStart = true;
+                } else if (selectedFrom && selectedFrom !== square && !currentPiece()) {
                     toInput.value = square;
                     applyHighlights();
                     updateMoveUI();
@@ -558,10 +657,12 @@ function initChess(gameId) {
                     lastTouchHandledSquare = square;
                     hideCoachmark();
                     localStorage.setItem('chess_hint_seen', '1');
+                    touchHandledOnStart = true;
                 } else if (!selectedFrom || selectedFrom !== square) {
                     activateSquare(square, currentPiece);
                     lastTouchHandledAt = Date.now();
                     lastTouchHandledSquare = square;
+                    touchHandledOnStart = true;
                 }
                 if (ev.cancelable) ev.preventDefault();
             }, { passive: false });
@@ -571,6 +672,12 @@ function initChess(gameId) {
             }, { passive: true });
 
             squareEl.addEventListener('touchend', function(ev) {
+                if (touchHandledOnStart && !touchMoved) {
+                    touchFrom = null;
+                    touchActive = false;
+                    touchHandledOnStart = false;
+                    return;
+                }
                 if (!touchMoved) {
                     if (selectedFrom !== square) {
                         activateSquare(square, currentPiece);
@@ -606,12 +713,14 @@ function initChess(gameId) {
 
                 touchFrom = null;
                 touchActive = false;
+                touchHandledOnStart = false;
             }, { passive: false });
 
             squareEl.addEventListener('touchcancel', function() {
                 touchMoved = false;
                 touchFrom = null;
                 touchActive = false;
+                touchHandledOnStart = false;
             }, { passive: true });
 
             squareEl.addEventListener('pointerdown', function(ev) {
@@ -619,7 +728,13 @@ function initChess(gameId) {
                 touchActive = true;
                 touchMoved = false;
                 touchFrom = square;
-                if (selectedFrom && selectedFrom !== square && !currentPiece()) {
+                touchHandledOnStart = false;
+                if (selectedFrom === square) {
+                    activateSquare(square, currentPiece)
+                    lastTouchHandledAt = Date.now();
+                    lastTouchHandledSquare = square;
+                    touchHandledOnStart = true;
+                } else if (selectedFrom && selectedFrom !== square && !currentPiece()) {
                     toInput.value = square;
                     applyHighlights();
                     updateMoveUI();
@@ -628,10 +743,12 @@ function initChess(gameId) {
                     lastTouchHandledSquare = square;
                     hideCoachmark();
                     localStorage.setItem('chess_hint_seen', '1');
+                    touchHandledOnStart = true;
                 } else if (!selectedFrom || selectedFrom !== square) {
                     activateSquare(square, currentPiece);
                     lastTouchHandledAt = Date.now();
                     lastTouchHandledSquare = square;
+                    touchHandledOnStart = true;
                 }
                 if (ev.cancelable) ev.preventDefault();
             }, { passive: false });
@@ -644,6 +761,13 @@ function initChess(gameId) {
             squareEl.addEventListener('pointerup', function(ev) {
                 if (ev.pointerType !== 'touch' || !touchActive) return;
                 if (ev.cancelable) ev.preventDefault();
+
+                if (touchHandledOnStart && !touchMoved) {
+                    touchFrom = null;
+                    touchActive = false;
+                    touchHandledOnStart = false;
+                    return;
+                }
 
                 if (!touchMoved) {
                     if (selectedFrom !== square) {
@@ -673,6 +797,7 @@ function initChess(gameId) {
 
                 touchFrom = null;
                 touchActive = false;
+                touchHandledOnStart = false;
             }, { passive: false });
 
             squareEl.addEventListener('pointercancel', function(ev) {
@@ -680,6 +805,7 @@ function initChess(gameId) {
                 touchMoved = false;
                 touchFrom = null;
                 touchActive = false;
+                touchHandledOnStart = false;
             }, { passive: true });
         });
 

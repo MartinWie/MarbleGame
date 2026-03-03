@@ -571,7 +571,15 @@ class Game(
                 }
             }
             GamePhase.GAME_OVER -> {
-                // Nothing special on disconnect - creator transfers on grace period expiry
+                if (sessionId == creatorSessionId) {
+                    val newCreator =
+                        players.values.firstOrNull { it.connected && it.sessionId != sessionId }
+                            ?: players.values.firstOrNull { it.sessionId != sessionId }
+                    if (newCreator != null) {
+                        creatorSessionId = newCreator.sessionId
+                        logger.info("Game {} creator transferred to '{}' (immediate game-over disconnect)", id, newCreator.name)
+                    }
+                }
             }
         }
         return true

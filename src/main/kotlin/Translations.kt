@@ -14,7 +14,7 @@ object Translations {
             "en" to
                 mapOf(
                     // General
-                    "game.title" to "Games",
+                    "game.title" to "Marble Game",
                     "button.share" to "Share",
                     "button.copied" to "Copied!",
                     "share.text" to "Join my game!",
@@ -188,7 +188,7 @@ object Translations {
             "de" to
                 mapOf(
                     // General
-                    "game.title" to "Spiele",
+                    "game.title" to "Murmelspiel",
                     "button.share" to "Teilen",
                     "button.copied" to "Kopiert!",
                     "share.text" to "Spiel mit mir!",

@@ -138,7 +138,7 @@ class ApplicationTest {
                     assertEquals(HttpStatusCode.OK, status)
                     val body = bodyAsText()
                     // Falls back to English since French is not supported
-                    assertTrue(body.contains("Games") || body.contains("Create"))
+                    assertTrue(body.contains("Marble Game") || body.contains("Create"))
                 }
         }
 
@@ -155,7 +155,7 @@ class ApplicationTest {
                     assertEquals(HttpStatusCode.OK, status)
                     // Should fall back to English
                     val body = bodyAsText()
-                    assertTrue(body.contains("Games") || body.contains("Create"))
+                    assertTrue(body.contains("Marble Game") || body.contains("Create"))
                 }
         }
 

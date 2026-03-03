@@ -542,8 +542,8 @@ class GameTest {
 
         val changed = game.handleGracePeriodExpired("creator")
 
-        // Creator should transfer to Bob
-        assertTrue(changed)
+        // Creator should already transfer on disconnect, or at latest on grace expiry.
+        assertTrue(changed || game.creatorSessionId == "player1")
         assertEquals("player1", game.creatorSessionId)
         // But creator should still be in playerOrder
         assertEquals(2, game.allPlayers.size)
@@ -653,6 +653,18 @@ class GameTest {
 
         // Game can now start
         assertTrue(game.startGame())
+    }
+
+    @Test
+    fun `game over creator disconnect immediately transfers creator`() {
+        val game = createGameWithPlayers("Alice", "Bob")
+        game.startGame()
+        game.phase = GamePhase.GAME_OVER
+
+        val changed = game.handlePlayerDisconnect("creator")
+
+        assertTrue(changed)
+        assertEquals("player1", game.creatorSessionId)
     }
 
     // ==================== Cleanup Tests ====================

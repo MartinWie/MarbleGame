@@ -335,4 +335,45 @@ class ChessGameTest {
         assertNull(game.winnerSessionId)
         assertEquals("stalemate", game.endReason)
     }
+
+    @Test
+    fun `creator transfers after grace expiry in game over`() {
+        val game = startedGame()
+        game.phase = ChessPhase.GAME_OVER
+
+        game.players["p1"]?.connected = false
+        game.players["p1"]?.disconnectedAt = System.currentTimeMillis() - DISCONNECT_GRACE_PERIOD_MS - 1000
+
+        val changed = game.handleGracePeriodExpired("p1")
+
+        assertTrue(changed)
+        assertEquals("p2", game.creatorSessionId)
+    }
+
+    @Test
+    fun `checked king square is exposed in check`() {
+        val game = startedGame()
+
+        game.forcePositionForTesting(
+            pieces =
+                mapOf(
+                    "e8" to 'k',
+                    "e1" to 'K',
+                    "e2" to 'R',
+                ),
+            turn = ChessColor.BLACK,
+        )
+
+        assertEquals("e8", game.checkedKingSquare())
+    }
+
+    @Test
+    fun `checked king square is null when not in check or game over`() {
+        val game = startedGame()
+
+        assertNull(game.checkedKingSquare())
+
+        game.phase = ChessPhase.GAME_OVER
+        assertNull(game.checkedKingSquare())
+    }
 }

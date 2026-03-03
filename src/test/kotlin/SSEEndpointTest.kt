@@ -536,6 +536,44 @@ class SSEEndpointTest {
             GameManager.removeGame(gameId)
         }
 
+    @Test
+    fun `chess page share uses clipboard fallback only when native share unavailable`() =
+        testApplication {
+            application { module() }
+
+            val client =
+                createClient {
+                    install(HttpCookies)
+                    followRedirects = false
+                }
+
+            client.get("/")
+            val createResponse =
+                client.submitForm(
+                    url = "/chess/create",
+                    formParameters = parameters { append("playerName", "Host") },
+                )
+
+            val chessUrl = createResponse.headers["Location"]!!
+            val gameResponse = client.get(chessUrl)
+            val body = gameResponse.bodyAsText()
+
+            val gameId = chessUrl.substringAfterLast("/chess/")
+
+            assertTrue(body.contains("share-btn"), "Should have share button")
+            assertTrue(body.contains("/chess/$gameId/join"), "Share URL should point to chess join page")
+            assertTrue(body.contains("navigator.share"), "Should include native share path")
+            assertTrue(body.contains("nativeShare().catch(function() {});"), "Native share rejection should be ignored")
+            assertTrue(body.contains("clipboardCopy();"), "Clipboard copy branch should exist")
+            assertFalse(
+                body.contains("nativeShare().catch(function() { clipboardCopy(); });"),
+                "Clipboard fallback should not run after native share rejection",
+            )
+
+            // Cleanup
+            ChessGameManager.removeGame(gameId)
+        }
+
     // ==================== Regression Tests ====================
 
     @Test

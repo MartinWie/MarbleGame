@@ -16,10 +16,10 @@ test.describe('Homepage', () => {
     await page.goto('/');
     
     // Check page title
-    await expect(page).toHaveTitle(/Games/);
+    await expect(page).toHaveTitle(/Marble Game/);
     
     // Check main heading
-    await expect(page.locator('h1')).toContainText('Games');
+    await expect(page.locator('h1')).toContainText('Marble Game');
   });
 
   test('should not include PostHog script when analytics disabled', async ({ page }) => {
@@ -86,7 +86,7 @@ test.describe('Game Creation', () => {
     await expect(page).toHaveURL(/\/game\/[a-f0-9]{8}/);
     
     // Should show the game interface
-    await expect(page.locator('h1')).toContainText('Games');
+    await expect(page.locator('h1')).toContainText('Marble Game');
   });
 
   test('should preserve player name in game', async ({ page }) => {
@@ -293,6 +293,30 @@ test.describe('Chess Joining', () => {
       await p2Context.close();
     }
   });
+
+  test('last move indicator appears on both players after move', async ({ browser }) => {
+    const p1Context = await browser.newContext();
+    const p1 = await p1Context.newPage();
+    const p2Context = await browser.newContext();
+    const p2 = await p2Context.newPage();
+
+    try {
+      const gameId = await createChessGame(p1, 'Host');
+      await joinChessGame(p2, gameId, 'Opponent');
+
+      const status = await postMove(p1, gameId, 'e2', 'e4');
+      expect(status).toBe(200);
+
+      await expect.poll(async () => await p1.locator('.chess-square[data-square="e2"]').evaluate((el) => el.classList.contains('last-move-from'))).toBe(true);
+      await expect.poll(async () => await p1.locator('.chess-square[data-square="e4"]').evaluate((el) => el.classList.contains('last-move-to'))).toBe(true);
+      await expect.poll(async () => await p2.locator('.chess-square[data-square="e2"]').evaluate((el) => el.classList.contains('last-move-from'))).toBe(true);
+      await expect.poll(async () => await p2.locator('.chess-square[data-square="e4"]').evaluate((el) => el.classList.contains('last-move-to'))).toBe(true);
+    } finally {
+      await p1Context.close();
+      await p2Context.close();
+    }
+  });
+
 });
 
 test.describe('Game Joining', () => {
