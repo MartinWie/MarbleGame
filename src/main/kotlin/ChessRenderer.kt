@@ -25,52 +25,11 @@ fun HTML.renderChessPage(
             div("header-actions") {
                 button(classes = "btn btn-secondary") {
                     id = "share-btn"
+                    attributes["data-share-url"] = "/chess/${game.id}/join"
                     attributes["data-share-text"] = "button.share".t(lang)
                     attributes["data-copied-text"] = "button.copied".t(lang)
                     attributes["data-share-title"] = "chess.title".t(lang)
                     attributes["data-share-message"] = "share.text".t(lang)
-                    attributes["onclick"] =
-                        """
-                        var btn = this;
-                        var url = window.location.origin + '/chess/${game.id}/join';
-                        function nativeShare() {
-                            var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-                            if (isMobile && navigator.share) {
-                                return navigator.share({ title: btn.dataset.shareTitle || '', text: btn.dataset.shareMessage || '', url: url });
-                            }
-                            return Promise.reject(new Error('native-share-not-available'));
-                        }
-                        function showCopied() {
-                            btn.textContent = btn.dataset.copiedText;
-                            btn.classList.add('copied');
-                            setTimeout(function() { btn.textContent = btn.dataset.shareText; btn.classList.remove('copied'); }, 2000);
-                        }
-                        function fallbackCopy() {
-                            var ta = document.createElement('textarea');
-                            ta.value = url;
-                            ta.style.position = 'fixed';
-                            ta.style.left = '-9999px';
-                            document.body.appendChild(ta);
-                            ta.focus();
-                            ta.select();
-                            ta.setSelectionRange(0, 99999);
-                            try { document.execCommand('copy'); showCopied(); } catch(e) { prompt('Copy this link:', url); }
-                            document.body.removeChild(ta);
-                        }
-                        function clipboardCopy() {
-                            if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
-                                navigator.clipboard.writeText(url).then(showCopied).catch(fallbackCopy);
-                            } else {
-                                fallbackCopy();
-                            }
-                        }
-                        var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-                        if (isMobile && navigator.share) {
-                            nativeShare().catch(function() {});
-                        } else {
-                            clipboardCopy();
-                        }
-                        """.trimIndent().replace("\n", " ")
                     +"button.share".t(lang)
                 }
             }

@@ -27,6 +27,83 @@ function initChess(gameId) {
     var lastUpdateAt = Date.now();
     var moveInFlight = false;
 
+    function bindShareButton() {
+        var shareBtn = document.getElementById('share-btn');
+        if (!shareBtn || shareBtn.dataset.shareBound === '1') return;
+        shareBtn.dataset.shareBound = '1';
+
+        function toAbsoluteShareUrl(pathOrUrl) {
+            if (!pathOrUrl) return window.location.href;
+            try {
+                var parsed = new URL(pathOrUrl, window.location.origin);
+                if (!/^https?:$/.test(parsed.protocol)) return window.location.href;
+                if (parsed.origin !== window.location.origin) return window.location.href;
+                return parsed.toString();
+            } catch (_) {
+                return window.location.origin + pathOrUrl;
+            }
+        }
+
+        function showCopied(btn) {
+            var shareText = btn.dataset.shareText || '';
+            btn.textContent = btn.dataset.copiedText || shareText;
+            btn.classList.add('copied');
+            setTimeout(function() {
+                btn.textContent = shareText;
+                btn.classList.remove('copied');
+            }, 2000);
+        }
+
+        function fallbackCopy(url, btn) {
+            var ta = document.createElement('textarea');
+            ta.value = url;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            ta.setSelectionRange(0, 99999);
+            try {
+                document.execCommand('copy');
+                showCopied(btn);
+            } catch (_) {
+                prompt('Copy this link:', url);
+            }
+            document.body.removeChild(ta);
+        }
+
+        function clipboardCopy(url, btn) {
+            if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+                navigator.clipboard.writeText(url).then(function() {
+                    showCopied(btn);
+                }).catch(function() {
+                    fallbackCopy(url, btn);
+                });
+            } else {
+                fallbackCopy(url, btn);
+            }
+        }
+
+        shareBtn.addEventListener('click', function() {
+            var btn = this;
+            var shareUrl = toAbsoluteShareUrl(btn.dataset.shareUrl || '');
+            var shareTitle = btn.dataset.shareTitle || '';
+            var shareMessage = btn.dataset.shareMessage || '';
+            var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+            if (isMobile && navigator.share) {
+                navigator.share({
+                    title: shareTitle,
+                    text: shareMessage,
+                    url: shareUrl,
+                }).catch(function() {});
+                return;
+            }
+
+            clipboardCopy(shareUrl, btn);
+        });
+    }
+
     function startCountdowns() {
         if (countdownInterval) clearInterval(countdownInterval);
         countdownInterval = setInterval(function() {
@@ -80,6 +157,7 @@ function initChess(gameId) {
             legalTargets = [];
             legalTargetSet = {};
             updateMoveUI();
+            bindShareButton();
             bindBoardInteractions();
             boardSnapshot = captureBoardSnapshot();
             if (previousSnapshot && Object.keys(previousSnapshot).length > 0) {
@@ -829,6 +907,7 @@ function initChess(gameId) {
 
     connect();
     startCountdowns();
+    bindShareButton();
     bindBoardInteractions();
     boardSnapshot = captureBoardSnapshot();
 

@@ -33,6 +33,11 @@ test.describe('Chess Fixes', () => {
       await p1.locator('.chess-square[data-square="e4"]').click();
 
       await expect(p1.locator('.move-trail-piece.piece-white')).toBeVisible();
+
+      await p2.locator('.chess-square[data-square="e7"]').click();
+      await p2.locator('.chess-square[data-square="e5"]').click();
+
+      await expect(p2.locator('.move-trail-piece.piece-black')).toBeVisible();
     } finally {
       await p1Context.close();
       await p2Context.close();
@@ -44,13 +49,60 @@ test.describe('Chess Fixes', () => {
     const page = await context.newPage();
 
     try {
+      await page.addInitScript(() => {
+        let shareCalls = 0;
+        let clipboardCalls = 0;
+        const shareMock = () => {
+          shareCalls += 1;
+          return Promise.reject(new Error('share-rejected'));
+        };
+        const clipboardMock = {
+          writeText: () => {
+            clipboardCalls += 1;
+            return Promise.resolve();
+          },
+        };
+
+        Object.defineProperty(window.navigator, 'share', {
+          configurable: true,
+          value: shareMock,
+        });
+        Object.defineProperty(window.navigator, 'clipboard', {
+          configurable: true,
+          value: clipboardMock,
+        });
+        Object.defineProperty(window.navigator, '__shareTest', {
+          configurable: true,
+          value: {
+            getShareCalls: () => shareCalls,
+            getClipboardCalls: () => clipboardCalls,
+          },
+        });
+      });
+
       await createChessGame(page, 'HostShare');
 
-      const onclick = await page.locator('#share-btn').getAttribute('onclick');
-      const normalized = (onclick ?? '').replace(/\s+/g, ' ').trim();
+      const shareBtn = page.locator('#share-btn');
+      await expect(shareBtn).toHaveAttribute('data-share-url', /\/chess\/[a-f0-9]{8}\/join/);
+      await expect(shareBtn).not.toHaveAttribute('onclick', /.+/);
 
-      expect(normalized).toContain('if (isMobile && navigator.share) { nativeShare().catch(function() {}); } else { clipboardCopy(); }');
-      expect(normalized).not.toContain('nativeShare().catch(function() { clipboardCopy(); });');
+      await shareBtn.click();
+
+      await expect
+        .poll(async () => {
+          return page.evaluate(() => {
+            return (window.navigator as unknown as { __shareTest?: { getShareCalls: () => number } }).__shareTest?.getShareCalls() ?? -1;
+          });
+        })
+        .toBe(1);
+
+      await expect
+        .poll(async () => {
+          return page.evaluate(() => {
+            return (window.navigator as unknown as { __shareTest?: { getClipboardCalls: () => number } }).__shareTest?.getClipboardCalls() ?? -1;
+          });
+        })
+        .toBe(0);
     } finally {
       await context.close();
     }

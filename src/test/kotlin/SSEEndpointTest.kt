@@ -537,7 +537,7 @@ class SSEEndpointTest {
         }
 
     @Test
-    fun `chess page share uses clipboard fallback only when native share unavailable`() =
+    fun `chess page share button follows html data-attribute contract without inline handlers`() =
         testApplication {
             application { module() }
 
@@ -561,14 +561,18 @@ class SSEEndpointTest {
             val gameId = chessUrl.substringAfterLast("/chess/")
 
             assertTrue(body.contains("share-btn"), "Should have share button")
-            assertTrue(body.contains("/chess/$gameId/join"), "Share URL should point to chess join page")
-            assertTrue(body.contains("navigator.share"), "Should include native share path")
-            assertTrue(body.contains("nativeShare().catch(function() {});"), "Native share rejection should be ignored")
-            assertTrue(body.contains("clipboardCopy();"), "Clipboard copy branch should exist")
-            assertFalse(
-                body.contains("nativeShare().catch(function() { clipboardCopy(); });"),
-                "Clipboard fallback should not run after native share rejection",
-            )
+            assertTrue(body.contains("data-share-url=\"/chess/$gameId/join\""), "Share URL data attribute should point to chess join page")
+            assertTrue(body.contains("data-share-text"), "Share text data attribute should be present")
+            assertTrue(body.contains("data-copied-text"), "Copied text data attribute should be present")
+            assertTrue(body.contains("data-share-title"), "Share title data attribute should be present")
+            assertTrue(body.contains("data-share-message"), "Share message data attribute should be present")
+
+            val shareButtonHtml = Regex("""<button[^>]*id=\"share-btn\"[^>]*>""").find(body)?.value
+            assertNotNull(shareButtonHtml, "Share button HTML should be present")
+            assertFalse(shareButtonHtml.contains("onclick=\""), "Share button should not use inline onclick")
+
+            assertFalse(body.contains("nativeShare().catch(function() {});"), "Inline native share logic should be removed")
+            assertFalse(body.contains("clipboardCopy();"), "Inline clipboard logic should be removed")
 
             // Cleanup
             ChessGameManager.removeGame(gameId)
