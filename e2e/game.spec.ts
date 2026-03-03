@@ -11,15 +11,16 @@ test.describe('Homepage', () => {
   const modeCard = (page) => page.locator('.mode-selector-card');
   const marblesForm = (page) => page.locator('#create-form-marbles');
   const chessForm = (page) => page.locator('#create-form-chess');
+  const pickGameHint = (page) => page.locator('#create-mode-placeholder');
 
   test('should load the homepage', async ({ page }) => {
     await page.goto('/');
     
     // Check page title
-    await expect(page).toHaveTitle(/Marble Game/);
+    await expect(page).toHaveTitle(/Games/);
     
     // Check main heading
-    await expect(page.locator('h1')).toContainText('Marble Game');
+    await expect(page.locator('h1')).toContainText('Games');
   });
 
   test('should not include PostHog script when analytics disabled', async ({ page }) => {
@@ -43,18 +44,23 @@ test.describe('Homepage', () => {
   test('should have create game form', async ({ page }) => {
     await page.goto('/');
 
-    // Check form elements
-    await expect(marblesForm(page).locator('input[name="playerName"]')).toBeVisible();
-    await expect(marblesForm(page).getByRole('button', { name: 'Create Game' })).toBeVisible();
+    await expect(pickGameHint(page)).toBeVisible();
+    await expect(marblesForm(page).locator('input[name="playerName"]')).not.toBeVisible();
+    await expect(chessForm(page).locator('input[name="playerName"]')).not.toBeVisible();
   });
 
-  test('should show both marbles and chess create actions', async ({ page }) => {
+  test('should show both games and reveal form after selection', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.getByRole('heading', { name: 'Choose Your Game' })).toBeVisible();
-    await expect(modeCard(page).locator('.mode-tile[data-mode="marbles"] h3')).toBeVisible();
-    await expect(modeCard(page).locator('.mode-tile[data-mode="chess"] h3')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Create Game' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Choose a Game' })).toBeVisible();
+    await expect(modeCard(page).locator('.mode-tile[data-mode="marbles"] .mode-title')).toBeVisible();
+    await expect(modeCard(page).locator('.mode-tile[data-mode="chess"] .mode-title')).toBeVisible();
+    await expect(pickGameHint(page)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create Marbles' })).not.toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create Chess' })).not.toBeVisible();
+
+    await modeCard(page).locator('.mode-tile[data-mode="marbles"]').click();
+    await expect(marblesForm(page).getByRole('button', { name: 'Create Marbles' })).toBeVisible();
 
     await modeCard(page).locator('.mode-tile[data-mode="chess"]').click();
     await expect(page.getByRole('button', { name: 'Create Chess' })).toBeVisible();
@@ -62,6 +68,7 @@ test.describe('Homepage', () => {
 
   test('player name input should be required', async ({ page }) => {
     await page.goto('/');
+    await modeCard(page).locator('.mode-tile[data-mode="marbles"]').click();
 
     const input = marblesForm(page).locator('input[name="playerName"]');
     
@@ -77,10 +84,11 @@ test.describe('Game Creation', () => {
 
   test('should create a new game', async ({ page }) => {
     await page.goto('/');
+    await modeCard(page).locator('.mode-tile[data-mode="marbles"]').click();
     
     // Fill in player name and submit
     await marblesForm(page).locator('input[name="playerName"]').fill('TestPlayer');
-    await marblesForm(page).getByRole('button', { name: 'Create Game' }).click();
+    await marblesForm(page).getByRole('button', { name: 'Create Marbles' }).click();
     
     // Should redirect to game page (game ID is 8 hex chars like d0ca5bf1)
     await expect(page).toHaveURL(/\/game\/[a-f0-9]{8}/);
@@ -91,10 +99,11 @@ test.describe('Game Creation', () => {
 
   test('should preserve player name in game', async ({ page }) => {
     await page.goto('/');
+    await modeCard(page).locator('.mode-tile[data-mode="marbles"]').click();
     
     const playerName = 'E2ETestPlayer';
     await marblesForm(page).locator('input[name="playerName"]').fill(playerName);
-    await marblesForm(page).getByRole('button', { name: 'Create Game' }).click();
+    await marblesForm(page).getByRole('button', { name: 'Create Marbles' }).click();
     
     // Wait for game page to load (game ID is 8 hex chars)
     await expect(page).toHaveURL(/\/game\/[a-f0-9]{8}/);

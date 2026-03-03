@@ -5,7 +5,7 @@ test.describe('Chess Mobile', () => {
     await page.goto('/');
     await page.locator('.mode-tile[data-mode="chess"]').click();
     await page.locator('#create-form-chess input[name="playerName"]').fill(name);
-    await page.locator('#create-form-chess button:has-text("Create Chess")').click();
+    await page.getByRole('button', { name: 'Create Chess' }).click();
     await expect(page).toHaveURL(/\/chess\/[a-f0-9]{8}/);
     return new URL(page.url()).pathname.split('/chess/')[1];
   }

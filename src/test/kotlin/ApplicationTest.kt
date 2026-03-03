@@ -76,7 +76,7 @@ class ApplicationTest {
                 }.apply {
                     assertEquals(HttpStatusCode.OK, status)
                     val body = bodyAsText()
-                    assertTrue(body.contains("Spiele") || body.contains("Murmelspiel erstellen"))
+                    assertTrue(body.contains("Spiele") || body.contains("Spiel wählen"))
                 }
         }
 
@@ -92,7 +92,7 @@ class ApplicationTest {
                 }.apply {
                     assertEquals(HttpStatusCode.OK, status)
                     val body = bodyAsText()
-                    assertTrue(body.contains("Games") || body.contains("Create"))
+                    assertTrue(body.contains("Games") || body.contains("Choose a Game"))
                 }
         }
 
@@ -105,7 +105,7 @@ class ApplicationTest {
             client.get("/").apply {
                 assertEquals(HttpStatusCode.OK, status)
                 val body = bodyAsText()
-                assertTrue(body.contains("Games") || body.contains("Create"))
+                assertTrue(body.contains("Games") || body.contains("Choose a Game"))
             }
         }
 
@@ -121,7 +121,7 @@ class ApplicationTest {
                 }.apply {
                     assertEquals(HttpStatusCode.OK, status)
                     val body = bodyAsText()
-                    assertTrue(body.contains("Spiele") || body.contains("Murmelspiel erstellen"))
+                    assertTrue(body.contains("Spiele") || body.contains("Spiel wählen"))
                 }
         }
 

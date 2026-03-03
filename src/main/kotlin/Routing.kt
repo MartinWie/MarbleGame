@@ -52,8 +52,8 @@ fun Application.configureRouting() {
             val lang = call.getLanguage()
 
             call.respondHtml {
-                basePage("game.title".t(lang), lang, includeHtmx = true) {
-                    h1 { +"game.title".t(lang) }
+                basePage("home.title".t(lang), lang, includeHtmx = true) {
+                    h1 { +"home.title".t(lang) }
 
                     if (error == "game_not_found") {
                         div("error-message") {
@@ -66,39 +66,54 @@ fun Application.configureRouting() {
                         p("hint") { +"home.chooseModeHint".t(lang) }
 
                         div("mode-grid") {
-                            div("mode-tile active") {
+                            button(type = ButtonType.button, classes = "mode-tile") {
                                 attributes["data-mode"] = "marbles"
+                                attributes["aria-pressed"] = "false"
+                                attributes["aria-controls"] = "create-form-marbles"
                                 attributes["onclick"] =
                                     """
                                     document.querySelectorAll('.mode-tile').forEach(function(x){x.classList.remove('active');});
+                                    document.querySelectorAll('.mode-tile').forEach(function(x){x.setAttribute('aria-pressed','false');});
                                     this.classList.add('active');
+                                    this.setAttribute('aria-pressed','true');
                                     document.getElementById('create-form-marbles').classList.add('active');
                                     document.getElementById('create-form-chess').classList.remove('active');
+                                    document.getElementById('create-mode-placeholder').classList.remove('active');
                                     """.trimIndent().replace("\n", " ")
                                 span("mode-icon") { +"●●" }
-                                h3 { +"home.mode.marbles".t(lang) }
-                                p { +"home.createGameHint".t(lang) }
+                                span("mode-title") { +"home.mode.marbles".t(lang) }
+                                span("mode-hint") { +"home.createGameHint".t(lang) }
                             }
 
-                            div("mode-tile") {
+                            button(type = ButtonType.button, classes = "mode-tile") {
                                 attributes["data-mode"] = "chess"
+                                attributes["aria-pressed"] = "false"
+                                attributes["aria-controls"] = "create-form-chess"
                                 attributes["onclick"] =
                                     """
                                     document.querySelectorAll('.mode-tile').forEach(function(x){x.classList.remove('active');});
+                                    document.querySelectorAll('.mode-tile').forEach(function(x){x.setAttribute('aria-pressed','false');});
                                     this.classList.add('active');
+                                    this.setAttribute('aria-pressed','true');
                                     document.getElementById('create-form-marbles').classList.remove('active');
                                     document.getElementById('create-form-chess').classList.add('active');
+                                    document.getElementById('create-mode-placeholder').classList.remove('active');
                                     """.trimIndent().replace("\n", " ")
                                 span("mode-icon") { +"♚" }
-                                h3 { +"home.mode.chess".t(lang) }
-                                p { +"home.createChessHint".t(lang) }
+                                span("mode-title") { +"home.mode.chess".t(lang) }
+                                span("mode-hint") { +"home.createChessHint".t(lang) }
                             }
                         }
 
                         div("create-mode-forms") {
+                            p("hint create-mode-placeholder active") {
+                                id = "create-mode-placeholder"
+                                +"home.pickGameFirst".t(lang)
+                            }
+
                             form {
                                 id = "create-form-marbles"
-                                classes = setOf("mode-form", "active")
+                                classes = setOf("mode-form")
                                 hxPost("/game/create")
                                 hxTarget("body")
 
