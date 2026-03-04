@@ -5,6 +5,7 @@ import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.html.*
 import io.ktor.server.http.content.*
+import io.ktor.server.plugins.origin
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -950,6 +951,27 @@ fun Application.configureRouting() {
 
             val moves = game.legalMovesFor(session.id, from)
             call.respondText(moves.joinToString(","))
+        }
+
+        get("/qr") {
+            val target =
+                call.request.queryParameters["target"] ?: run {
+                    call.respondText("Missing target", status = HttpStatusCode.BadRequest)
+                    return@get
+                }
+
+            if (!target.startsWith("/game/") && !target.startsWith("/chess/")) {
+                call.respondText("Invalid target", status = HttpStatusCode.BadRequest)
+                return@get
+            }
+            if (!target.endsWith("/join")) {
+                call.respondText("Invalid target", status = HttpStatusCode.BadRequest)
+                return@get
+            }
+
+            val absoluteTarget = "${call.request.origin.scheme}://${call.request.host()}$target"
+            val png = QRCodeService.create(absoluteTarget)
+            call.respondBytes(png, contentType = ContentType.Image.PNG)
         }
 
         // Static resources

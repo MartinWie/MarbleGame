@@ -16,6 +16,7 @@ object Translations {
                     // General
                     "game.title" to "Marble Game",
                     "button.share" to "Share",
+                    "button.qr" to "QR",
                     "button.copied" to "Copied!",
                     "share.text" to "Join my game!",
                     // Home page
@@ -192,6 +193,7 @@ object Translations {
                     // General
                     "game.title" to "Murmelspiel",
                     "button.share" to "Teilen",
+                    "button.qr" to "QR",
                     "button.copied" to "Kopiert!",
                     "share.text" to "Spiel mit mir!",
                     // Home page

@@ -104,6 +104,45 @@ function initChess(gameId) {
         });
     }
 
+    function bindQrButton() {
+        var qrBtn = document.getElementById('qr-btn');
+        var qrModal = document.getElementById('qr-modal');
+        var qrImage = document.getElementById('qr-image');
+        var shareBtn = document.getElementById('share-btn');
+        if (!qrBtn || !qrModal || !qrImage || !shareBtn || qrBtn.dataset.qrBound === '1') return;
+        qrBtn.dataset.qrBound = '1';
+
+        qrModal.addEventListener('close', function() {
+            qrBtn.classList.remove('active');
+            qrBtn.setAttribute('aria-expanded', 'false');
+        });
+
+        qrModal.addEventListener('click', function(e) {
+            var box = qrModal.querySelector('.qr-modal-box');
+            if (box && !box.contains(e.target)) {
+                qrModal.close();
+            }
+        });
+
+        qrBtn.addEventListener('click', function() {
+            var sharePath = shareBtn.dataset.shareUrl || '';
+            if (!sharePath) return;
+            if (qrImage.dataset.src !== sharePath) {
+                qrImage.src = '/qr?target=' + encodeURIComponent(sharePath);
+                qrImage.dataset.src = sharePath;
+            }
+            if (!qrModal.open) {
+                qrModal.showModal();
+                qrBtn.classList.add('active');
+                qrBtn.setAttribute('aria-expanded', 'true');
+            } else {
+                qrModal.close();
+                qrBtn.classList.remove('active');
+                qrBtn.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+
     function startCountdowns() {
         if (countdownInterval) clearInterval(countdownInterval);
         countdownInterval = setInterval(function() {
@@ -158,6 +197,7 @@ function initChess(gameId) {
             legalTargetSet = {};
             updateMoveUI();
             bindShareButton();
+            bindQrButton();
             bindBoardInteractions();
             boardSnapshot = captureBoardSnapshot();
             if (previousSnapshot && Object.keys(previousSnapshot).length > 0) {
@@ -908,6 +948,7 @@ function initChess(gameId) {
     connect();
     startCountdowns();
     bindShareButton();
+    bindQrButton();
     bindBoardInteractions();
     boardSnapshot = captureBoardSnapshot();
 

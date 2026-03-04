@@ -530,7 +530,11 @@ class SSEEndpointTest {
             val gameId = gameUrl.substringAfterLast("/game/")
 
             assertTrue(body.contains("share-btn"), "Should have share button")
-            assertTrue(body.contains("/join"), "Share URL should point to join page")
+            assertTrue(body.contains("data-share-url=\"/game/$gameId/join\""), "Share URL should point to join page")
+            assertTrue(body.contains("qr-btn"), "Should have QR button")
+            assertTrue(body.contains("qr-modal"), "Should have QR modal")
+            assertFalse(body.contains("qr-close-btn"), "QR modal should not render explicit close button")
+            assertTrue(body.contains("qr-image"), "Should have QR image placeholder")
 
             // Cleanup
             GameManager.removeGame(gameId)
@@ -566,6 +570,10 @@ class SSEEndpointTest {
             assertTrue(body.contains("data-copied-text"), "Copied text data attribute should be present")
             assertTrue(body.contains("data-share-title"), "Share title data attribute should be present")
             assertTrue(body.contains("data-share-message"), "Share message data attribute should be present")
+            assertTrue(body.contains("qr-btn"), "Should have QR button")
+            assertTrue(body.contains("qr-modal"), "Should have QR modal")
+            assertFalse(body.contains("qr-close-btn"), "QR modal should not render explicit close button")
+            assertTrue(body.contains("qr-image"), "Should have QR image placeholder")
 
             val shareButtonHtml = Regex("""<button[^>]*id=\"share-btn\"[^>]*>""").find(body)?.value
             assertNotNull(shareButtonHtml, "Share button HTML should be present")

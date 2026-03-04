@@ -34,6 +34,7 @@ dependencies {
     implementation("io.ktor:ktor-server-netty")
     implementation("ch.qos.logback:logback-classic:$logback_version")
     implementation("io.ktor:ktor-server-config-yaml")
+    implementation("io.github.g0dkar:qrcode-kotlin:4.1.1")
 
     // Type-safe HTMX attributes for kotlinx-html
     implementation("io.github.martinwie:kotlinx-htmx:0.1.0")

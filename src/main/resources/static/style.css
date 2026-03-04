@@ -116,18 +116,101 @@ a:hover {
     font-size: 0.9rem;
     font-weight: 600;
     transition: all 0.2s ease;
-    margin-top: 8px;
+    margin-top: 0;
     width: auto;
     display: inline-flex;
-    margin-left: auto;
-    margin-right: auto;
+    margin-left: 0;
+    margin-right: 0;
+}
+
+#qr-btn {
+    min-width: 44px;
+    width: 44px;
+    min-height: 40px;
+    padding: 8px;
+    border-radius: 8px;
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.header-action-btn {
+    min-height: 40px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.header-action-btn--icon {
+    width: 40px;
+    min-width: 40px;
+    padding: 8px;
+}
+
+#qr-btn:hover,
+#qr-btn.active {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: #ffffff;
+}
+
+.qr-icon {
+    display: inline-flex;
+    width: 20px;
+    height: 20px;
+}
+
+.qr-icon svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+
+.qr-image {
+    width: min(320px, 82vw);
+    height: auto;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: #0f0f1a;
+    padding: 18px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 }
 
 .header-actions {
     display: flex;
     justify-content: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+    align-items: center;
+}
+
+.qr-modal {
+    border: none;
+    border-radius: 16px;
+    padding: 0;
+    background: transparent;
+}
+
+.qr-modal::backdrop {
+    background: rgba(0, 0, 0, 0.58);
+    backdrop-filter: blur(4px);
+}
+
+.qr-modal-box {
+    background: rgba(22, 24, 34, 0.96);
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: 10px;
-    flex-wrap: wrap;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
 }
 
 #share-btn:hover {

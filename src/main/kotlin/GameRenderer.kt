@@ -323,48 +323,48 @@ fun HTML.renderGamePage(
         // Game page content
         div("header") {
             h1 { +"game.title".t(lang) }
-            button {
-                id = "share-btn"
-                attributes["data-share-text"] = "button.share".t(lang)
-                attributes["data-copied-text"] = "button.copied".t(lang)
-                attributes["onclick"] =
-                    """
-                    var btn = this;
-                    var url = window.location.origin + '/game/${game.id}/join';
-                    function showCopied() {
-                        btn.textContent = btn.dataset.copiedText;
-                        btn.classList.add('copied');
-                        setTimeout(function() { btn.textContent = btn.dataset.shareText; btn.classList.remove('copied'); }, 2000);
-                    }
-                    function fallbackCopy() {
-                        var ta = document.createElement('textarea');
-                        ta.value = url;
-                        ta.style.position = 'fixed';
-                        ta.style.left = '-9999px';
-                        document.body.appendChild(ta);
-                        ta.focus();
-                        ta.select();
-                        ta.setSelectionRange(0, 99999);
-                        try { document.execCommand('copy'); showCopied(); } catch(e) { prompt('Copy this link:', url); }
-                        document.body.removeChild(ta);
-                    }
-                    function clipboardCopy() {
-                        if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
-                            navigator.clipboard.writeText(url).then(showCopied).catch(fallbackCopy);
-                        } else {
-                            fallbackCopy();
+            div("header-actions") {
+                button(classes = "btn btn-secondary header-action-btn") {
+                    id = "share-btn"
+                    attributes["data-share-url"] = "/game/${game.id}/join"
+                    attributes["data-share-text"] = "button.share".t(lang)
+                    attributes["data-copied-text"] = "button.copied".t(lang)
+                    attributes["data-share-title"] = "game.title".t(lang)
+                    attributes["data-share-message"] = "share.text".t(lang)
+                    +"button.share".t(lang)
+                }
+                button(classes = "btn btn-secondary header-action-btn header-action-btn--icon") {
+                    id = "qr-btn"
+                    attributes["type"] = "button"
+                    attributes["aria-label"] = "button.qr".t(lang)
+                    attributes["title"] = "button.qr".t(lang)
+                    attributes["aria-controls"] = "qr-modal"
+                    attributes["aria-expanded"] = "false"
+                    span("qr-icon") {
+                        unsafe {
+                            +
+                                """
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-qr-code" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                                  <path d="M2 2h2v2H2z"/>
+                                  <path d="M6 0v6H0V0zM5 1H1v4h4zM4 12H2v2h2z"/>
+                                  <path d="M6 10v6H0v-6zm-5 1v4h4v-4zm11-9h2v2h-2z"/>
+                                  <path d="M10 0v6h6V0zm5 1v4h-4V1zM8 1V0h1v2H8v2H7V1zm0 5V4h1v2zM6 8V7h1V6h1v2h1V7h5v1h-4v1H7V8zm0 0v1H2V8H1v1H0V7h3v1zm10 1h-1V7h1zm-1 0h-1v2h2v-1h-1zm-4 0h2v1h-1v1h-1zm2 3v-1h-1v1h-1v1H9v1h3v-2zm0 0h3v1h-2v1h-1zm-4-1v1h1v-2H7v1z"/>
+                                  <path d="M7 12h1v3h4v1H7zm9 2v2h-3v-1h2v-1z"/>
+                                </svg>
+                                """.trimIndent()
                         }
                     }
-                    var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-                    if (isMobile && navigator.share) {
-                        navigator.share({ title: '${"game.title".t(
-                        lang,
-                    )}', text: '${"share.text".t(lang)}', url: url }).catch(function() {});
-                    } else {
-                        clipboardCopy();
+                }
+            }
+            dialog(classes = "qr-modal") {
+                id = "qr-modal"
+                div("qr-modal-box") {
+                    img(classes = "qr-image") {
+                        id = "qr-image"
+                        alt = "QR code"
+                        loading = ImgLoading.lazy
                     }
-                    """.trimIndent().replace("\n", " ")
-                +"button.share".t(lang)
+                }
             }
         }
 
