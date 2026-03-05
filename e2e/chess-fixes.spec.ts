@@ -187,4 +187,133 @@ test.describe('Chess Fixes', () => {
     }
   });
 
+  test('cookie banner interaction does not desync own move render', async ({ browser }) => {
+    const p1Context = await browser.newContext();
+    const p1 = await p1Context.newPage();
+    const p2Context = await browser.newContext();
+    const p2 = await p2Context.newPage();
+
+    try {
+      const gameId = await createChessGame(p1, 'HostCookieSync');
+      await joinChessGame(p2, gameId, 'GuestCookieSync');
+
+      const { whitePage, blackPage } = await resolveWhiteBlackPages(p1, p2);
+      await expect(whitePage.locator('.chess-board')).toBeVisible();
+      await expect(blackPage.locator('.chess-board')).toBeVisible();
+
+      // Create black-to-move state.
+      const openingStatus = await whitePage.evaluate(async ({ gameId }) => {
+        const body = new URLSearchParams({ from: 'e2', to: 'e4' });
+        const response = await fetch(`/chess/${gameId}/move`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+          body: body.toString(),
+        });
+        return response.status;
+      }, { gameId });
+      if (openingStatus !== 200) {
+        const alt = await blackPage.evaluate(async ({ gameId }) => {
+          const body = new URLSearchParams({ from: 'e2', to: 'e4' });
+          const response = await fetch(`/chess/${gameId}/move`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            body: body.toString(),
+          });
+          return response.status;
+        }, { gameId });
+        expect(alt).toBe(200);
+      }
+
+      // Accept cookie banner on black side (if visible).
+      const cookieBanner = blackPage.locator('#cookie-banner');
+      if (await cookieBanner.isVisible().catch(() => false)) {
+        await blackPage.getByRole('button', { name: /accept|akzeptieren/i }).click();
+        await expect(blackPage).toHaveURL(new RegExp(`/chess/${gameId}$`));
+      }
+
+      // Black moves; should show on black client without manual reload.
+      await blackPage.locator('.chess-square[data-square="e7"]').click();
+      await blackPage.locator('.chess-square[data-square="e5"]').click();
+
+      await expect
+        .poll(async () => {
+          return blackPage.locator('.chess-square[data-square="e5"]').getAttribute('data-piece');
+        })
+        .toBe('p');
+
+      await expect
+        .poll(async () => {
+          return whitePage.locator('.chess-square[data-square="e5"]').getAttribute('data-piece');
+        })
+        .toBe('p');
+    } finally {
+      await p1Context.close();
+      await p2Context.close();
+    }
+  });
+
+  test('cookie reject interaction does not desync own move render', async ({ browser }) => {
+    const p1Context = await browser.newContext();
+    const p1 = await p1Context.newPage();
+    const p2Context = await browser.newContext();
+    const p2 = await p2Context.newPage();
+
+    try {
+      const gameId = await createChessGame(p1, 'HostCookieReject');
+      await joinChessGame(p2, gameId, 'GuestCookieReject');
+
+      const { whitePage, blackPage } = await resolveWhiteBlackPages(p1, p2);
+      await expect(whitePage.locator('.chess-board')).toBeVisible();
+      await expect(blackPage.locator('.chess-board')).toBeVisible();
+
+      // Create black-to-move state.
+      const openingStatus = await whitePage.evaluate(async ({ gameId }) => {
+        const body = new URLSearchParams({ from: 'e2', to: 'e4' });
+        const response = await fetch(`/chess/${gameId}/move`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+          body: body.toString(),
+        });
+        return response.status;
+      }, { gameId });
+      if (openingStatus !== 200) {
+        const alt = await blackPage.evaluate(async ({ gameId }) => {
+          const body = new URLSearchParams({ from: 'e2', to: 'e4' });
+          const response = await fetch(`/chess/${gameId}/move`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            body: body.toString(),
+          });
+          return response.status;
+        }, { gameId });
+        expect(alt).toBe(200);
+      }
+
+      // Reject cookie banner on black side (if visible).
+      const cookieBanner = blackPage.locator('#cookie-banner');
+      if (await cookieBanner.isVisible().catch(() => false)) {
+        await blackPage.getByRole('button', { name: /reject|ablehnen/i }).click();
+      }
+
+      // Black moves; should show on black client without manual reload.
+      await blackPage.locator('.chess-square[data-square="e7"]').click();
+      await blackPage.locator('.chess-square[data-square="e5"]').click();
+
+      await expect
+        .poll(async () => {
+          return blackPage.locator('.chess-square[data-square="e5"]').getAttribute('data-piece');
+        })
+        .toBe('p');
+
+      await expect
+        .poll(async () => {
+          return whitePage.locator('.chess-square[data-square="e5"]').getAttribute('data-piece');
+        })
+        .toBe('p');
+    } finally {
+      await p1Context.close();
+      await p2Context.close();
+    }
+  });
+
 });
