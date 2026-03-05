@@ -407,6 +407,62 @@ function initChess(gameId) {
         applyHighlights();
     }
 
+    function applyRenderedState(htmlFragment) {
+        if (!chessContent) return;
+        chessContent.innerHTML = htmlFragment;
+        htmx.process(chessContent);
+        selectedFrom = null;
+        legalTargets = [];
+        legalTargetSet = {};
+        updateMoveUI();
+        bindShareButton();
+        bindSoundButton();
+        bindQrButton();
+        bindBoardInteractions();
+        boardSnapshot = captureBoardSnapshot();
+        lastUpdateAt = Date.now();
+        var boardEl = document.querySelector('.chess-board');
+        if (boardEl) {
+            previousTurnColor = boardEl.getAttribute('data-turn') || '';
+            var moveMeta = boardEl.getAttribute('data-last-move-meta') || '';
+            if (moveMeta) {
+                lastAnimatedMoveMeta = moveMeta;
+            }
+        }
+        startCountdowns();
+    }
+
+    function refreshStateFromServer() {
+        return fetch('/chess/' + gameId)
+            .then(function(response) {
+                if (!response.ok) return '';
+                return response.text();
+            })
+            .then(function(html) {
+                if (!html) return;
+                var tmp = document.createElement('div');
+                tmp.innerHTML = html;
+                var incomingContent = tmp.querySelector('#chess-content');
+                if (incomingContent) {
+                    applyRenderedState(incomingContent.innerHTML);
+                }
+            })
+            .catch(function() {});
+    }
+
+    function ensureMoveVisibleOrRefresh(fromSquare, toSquare, submittedAt) {
+        setTimeout(function() {
+            var updateSeen = lastUpdateAt > submittedAt;
+            var boardEl = document.querySelector('.chess-board');
+            var moveMeta = boardEl ? (boardEl.getAttribute('data-last-move-meta') || '') : '';
+            var expectedToken = fromSquare + '-' + toSquare;
+            var moveSeen = moveMeta.indexOf(expectedToken) !== -1;
+            if (!updateSeen || !moveSeen) {
+                refreshStateFromServer();
+            }
+        }, 1200);
+    }
+
     function updateMoveUI() {
         var fromInput = document.getElementById('chess-from');
         var toInput = document.getElementById('chess-to');
@@ -420,6 +476,7 @@ function initChess(gameId) {
         var moveForm = document.querySelector('.chess-move-form');
         var invalidMsg = moveForm ? moveForm.dataset.invalidMsg : 'Invalid move';
         var networkMsg = moveForm ? moveForm.dataset.networkMsg : 'Connection problem';
+        var submittedAt = Date.now();
 
         moveInFlight = true;
 
@@ -454,6 +511,7 @@ function initChess(gameId) {
                     return;
                 }
                 syncTurnMetadataAfterLocalMove(fromSquare, toSquare);
+                ensureMoveVisibleOrRefresh(fromSquare, toSquare, submittedAt);
             })
             .catch(function() {
                 moveInFlight = false;
