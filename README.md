@@ -202,7 +202,24 @@ e2e/                  # Playwright E2E tests
 ### Scalability
 - Games auto-cleanup after inactivity (1h for finished, 4h for abandoned)
 - Each player has a dedicated SSE channel for broadcasting
-- Connection grace period (30s) handles brief disconnects
+- Connection grace period (15s) handles brief disconnects
+
+### TODO - Road to 100x Capacity
+
+Target: scale from current single-instance setup to roughly 100x more concurrent games (with spectators) in both Marble and Chess modes, while keeping move latency and reconnect behavior stable.
+
+- [ ] Define performance SLOs (e.g., p95 move propagation latency, reconnect success rate, max memory per connection)
+- [ ] Add repeatable load tests for SSE fanout and active move traffic (baseline + stress profiles)
+- [ ] Replace `Channel.UNLIMITED` with bounded queues and explicit backpressure strategy
+- [ ] Define backpressure policy (e.g., drop stale intermediate updates but always deliver latest state and terminal state)
+- [ ] Reduce per-update payload size (state deltas instead of full HTML where possible)
+- [ ] Coalesce/batch rapid broadcasts in a short debounce window to cap update frequency under burst
+- [ ] Externalize authoritative game/session state (or enforce strict sticky sessions with documented failover behavior)
+- [ ] Introduce horizontal scaling (multiple app instances behind a load balancer)
+- [ ] Externalize shared transient state needed for multi-instance realtime routing (e.g., Redis pub/sub)
+- [ ] Add shard/partition strategy by `gameId` to keep game traffic localized
+- [ ] Tune OS and runtime for high connection counts (file descriptors, TCP keepalive, JVM memory limits)
+- [ ] Add production dashboards + alerts (connections, queue depth, dropped updates, latency percentiles)
 
 ## Network
 

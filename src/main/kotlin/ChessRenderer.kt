@@ -155,51 +155,57 @@ fun renderChessState(
         div("chess-status-strip") {
             when (game.phase) {
                 ChessPhase.WAITING_FOR_PLAYERS -> {
-                    val connected = game.connectedPlayers.count { game.colorFor(it.sessionId) != null }
-                    p("turn-line turn-wait") { +"chess.waiting.title".t(lang) }
-                    p("hint") { +"chess.waiting.players".t(lang, connected) }
-                    p("hint") { +"chess.waiting.hint".t(lang) }
+                    div("chess-status-content waiting-status") {
+                        val connected = game.connectedPlayers.count { game.colorFor(it.sessionId) != null }
+                        p("turn-line turn-wait") { +"chess.waiting.title".t(lang) }
+                        p("waiting-ready") { +"chess.waiting.players".t(lang, connected) }
+                        p("waiting-share") { +"chess.waiting.hint".t(lang) }
+                    }
                 }
 
                 ChessPhase.IN_PROGRESS -> {
-                    val checkedKingSquare = game.checkedKingSquare()
-                    val turnText = if (game.turn == ChessColor.WHITE) "chess.color.white".t(lang) else "chess.color.black".t(lang)
-                    when {
-                        yourColor == null -> p("turn-line") { +"chess.turn".t(lang, turnText) }
-                        yourColor == game.turn -> p("turn-line turn-your") { +"chess.turn.yours".t(lang) }
-                        else -> p("turn-line turn-wait") { +"chess.turn.wait".t(lang, turnText) }
-                    }
-                    p("check-alert") { +(if (checkedKingSquare != null) "chess.check".t(lang) else "") }
+                    div("chess-status-content in-progress-status") {
+                        val checkedKingSquare = game.checkedKingSquare()
+                        val turnText = if (game.turn == ChessColor.WHITE) "chess.color.white".t(lang) else "chess.color.black".t(lang)
+                        when {
+                            yourColor == null -> p("turn-line") { +"chess.turn".t(lang, turnText) }
+                            yourColor == game.turn -> p("turn-line turn-your") { +"chess.turn.yours".t(lang) }
+                            else -> p("turn-line turn-wait") { +"chess.turn.wait".t(lang, turnText) }
+                        }
+                        p("check-alert") { +(if (checkedKingSquare != null) "chess.check".t(lang) else "") }
 
-                    if (yourColor != null) {
-                        renderMoveForm(game, lang)
-                    } else {
-                        p("hint") { +"chess.spectator.hint".t(lang) }
+                        if (yourColor != null) {
+                            renderMoveForm(game, lang)
+                        } else {
+                            p("hint") { +"chess.spectator.hint".t(lang) }
+                        }
                     }
                 }
 
                 ChessPhase.GAME_OVER -> {
-                    val winner = game.winner()
-                    if (winner != null) {
-                        p("winner-text") { +"chess.winner".t(lang, winner.name) }
-                    } else if (game.endReason == "stalemate") {
-                        p("winner-text") { +"chess.gameOver.stalemate".t(lang) }
-                    }
-                    val reasonText =
-                        when (game.endReason) {
-                            "disconnect" -> "chess.gameOver.disconnect".t(lang)
-                            "checkmate" -> "chess.gameOver.checkmate".t(lang)
-                            "stalemate" -> "chess.gameOver.stalemateHint".t(lang)
-                            else -> null
+                    div("chess-status-content game-over-status") {
+                        val winner = game.winner()
+                        if (winner != null) {
+                            p("winner-text") { +"chess.winner".t(lang, winner.name) }
+                        } else if (game.endReason == "stalemate") {
+                            p("winner-text") { +"chess.gameOver.stalemate".t(lang) }
                         }
-                    if (reasonText != null) {
-                        p("hint") { +reasonText }
-                    }
-                    if (isCreator) {
-                        button(classes = "btn btn-primary") {
-                            hxPost("/chess/${game.id}/new-game")
-                            hxSwap(HxSwapOption.NONE)
-                            +"button.playAgain".t(lang)
+                        val reasonText =
+                            when (game.endReason) {
+                                "disconnect" -> "chess.gameOver.disconnect".t(lang)
+                                "checkmate" -> "chess.gameOver.checkmate".t(lang)
+                                "stalemate" -> "chess.gameOver.stalemateHint".t(lang)
+                                else -> null
+                            }
+                        if (reasonText != null) {
+                            p("hint") { +reasonText }
+                        }
+                        if (isCreator) {
+                            button(classes = "btn btn-primary") {
+                                hxPost("/chess/${game.id}/new-game")
+                                hxSwap(HxSwapOption.NONE)
+                                +"button.playAgain".t(lang)
+                            }
                         }
                     }
                 }
