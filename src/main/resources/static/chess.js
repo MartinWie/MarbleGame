@@ -24,6 +24,7 @@ function initChess(gameId) {
     var touchHandledOnStart = false;
     var lastTouchHandledAt = 0;
     var lastTouchHandledSquare = null;
+    var usePointerTouch = !!window.PointerEvent;
     var lastUpdateAt = Date.now();
     var moveInFlight = false;
     var soundMuted = localStorage.getItem('marblegame_sound_muted') === '1';
@@ -342,16 +343,21 @@ function initChess(gameId) {
             currentPlayers.replaceWith(incomingPlayers);
         }
 
-        var currentPhase = chessContent.querySelector('.phase-info');
-        var incomingPhase = tmp.querySelector('.phase-info');
-        if (!currentPhase || !incomingPhase) return false;
+        var currentStatusStrip = chessContent.querySelector('.chess-status-strip');
+        var incomingStatusStrip = tmp.querySelector('.chess-status-strip');
+        if (!currentStatusStrip || !incomingStatusStrip) return false;
 
-        var currentBoardShell = currentPhase.querySelector('.chess-board-shell');
-        var incomingBoardShell = incomingPhase.querySelector('.chess-board-shell');
+        var currentBoardStage = chessContent.querySelector('.chess-board-stage-outside');
+        var incomingBoardStage = tmp.querySelector('.chess-board-stage-outside');
+        if (!currentBoardStage || !incomingBoardStage) return false;
+
+        var currentBoardShell = currentBoardStage.querySelector('.chess-board-shell');
+        var incomingBoardShell = incomingBoardStage.querySelector('.chess-board-shell');
         if (!currentBoardShell || !incomingBoardShell) return false;
 
         incomingBoardShell.replaceWith(currentBoardShell);
-        currentPhase.replaceWith(incomingPhase);
+        currentStatusStrip.replaceWith(incomingStatusStrip);
+        currentBoardStage.replaceWith(incomingBoardStage);
 
         var currentStatus = chessContent.querySelector('.your-status');
         var incomingStatus = tmp.querySelector('.your-status');
@@ -1165,6 +1171,7 @@ function initChess(gameId) {
             });
 
             squareEl.addEventListener('touchstart', function(ev) {
+                if (usePointerTouch) return;
                 touchActive = true;
                 touchMoved = false;
                 touchFrom = square;
@@ -1173,7 +1180,7 @@ function initChess(gameId) {
                     activateSquare(square, currentPiece)
                     lastTouchHandledAt = Date.now();
                     lastTouchHandledSquare = square;
-                    touchHandledOnStart = true;
+                    touchHandledOnStart = false;
                 } else if (selectedFrom && selectedFrom !== square && !isOwnPiece(currentPiece())) {
                     toInput.value = square;
                     applyHighlights();
@@ -1188,16 +1195,18 @@ function initChess(gameId) {
                     activateSquare(square, currentPiece);
                     lastTouchHandledAt = Date.now();
                     lastTouchHandledSquare = square;
-                    touchHandledOnStart = true;
+                    touchHandledOnStart = false;
                 }
                 if (ev.cancelable) ev.preventDefault();
             }, { passive: false });
 
             squareEl.addEventListener('touchmove', function() {
+                if (usePointerTouch) return;
                 touchMoved = true;
             }, { passive: true });
 
             squareEl.addEventListener('touchend', function(ev) {
+                if (usePointerTouch) return;
                 if (touchHandledOnStart && !touchMoved) {
                     touchFrom = null;
                     touchActive = false;
@@ -1205,11 +1214,6 @@ function initChess(gameId) {
                     return;
                 }
                 if (!touchMoved) {
-                    if (selectedFrom !== square) {
-                        activateSquare(square, currentPiece);
-                        lastTouchHandledAt = Date.now();
-                        lastTouchHandledSquare = square;
-                    }
                     touchFrom = null;
                     touchActive = false;
                     return;
@@ -1247,6 +1251,7 @@ function initChess(gameId) {
             }, { passive: false });
 
             squareEl.addEventListener('touchcancel', function() {
+                if (usePointerTouch) return;
                 touchMoved = false;
                 touchFrom = null;
                 touchActive = false;
@@ -1254,6 +1259,7 @@ function initChess(gameId) {
             }, { passive: true });
 
             squareEl.addEventListener('pointerdown', function(ev) {
+                if (!usePointerTouch) return;
                 if (ev.pointerType !== 'touch') return;
                 touchActive = true;
                 touchMoved = false;
@@ -1263,7 +1269,7 @@ function initChess(gameId) {
                     activateSquare(square, currentPiece)
                     lastTouchHandledAt = Date.now();
                     lastTouchHandledSquare = square;
-                    touchHandledOnStart = true;
+                    touchHandledOnStart = false;
                 } else if (selectedFrom && selectedFrom !== square && !isOwnPiece(currentPiece())) {
                     toInput.value = square;
                     applyHighlights();
@@ -1278,17 +1284,19 @@ function initChess(gameId) {
                     activateSquare(square, currentPiece);
                     lastTouchHandledAt = Date.now();
                     lastTouchHandledSquare = square;
-                    touchHandledOnStart = true;
+                    touchHandledOnStart = false;
                 }
                 if (ev.cancelable) ev.preventDefault();
             }, { passive: false });
 
             squareEl.addEventListener('pointermove', function(ev) {
+                if (!usePointerTouch) return;
                 if (ev.pointerType !== 'touch' || !touchActive) return;
                 touchMoved = true;
             }, { passive: true });
 
             squareEl.addEventListener('pointerup', function(ev) {
+                if (!usePointerTouch) return;
                 if (ev.pointerType !== 'touch' || !touchActive) return;
                 if (ev.cancelable) ev.preventDefault();
 
@@ -1300,11 +1308,6 @@ function initChess(gameId) {
                 }
 
                 if (!touchMoved) {
-                    if (selectedFrom !== square) {
-                        activateSquare(square, currentPiece);
-                        lastTouchHandledAt = Date.now();
-                        lastTouchHandledSquare = square;
-                    }
                     touchFrom = null;
                     touchActive = false;
                     return;
@@ -1335,6 +1338,7 @@ function initChess(gameId) {
             }, { passive: false });
 
             squareEl.addEventListener('pointercancel', function(ev) {
+                if (!usePointerTouch) return;
                 if (ev.pointerType !== 'touch') return;
                 touchMoved = false;
                 touchFrom = null;

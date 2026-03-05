@@ -152,74 +152,82 @@ fun renderChessState(
             }
         }
 
-        div("game-area chess-area") {
+        div("chess-status-strip") {
             when (game.phase) {
                 ChessPhase.WAITING_FOR_PLAYERS -> {
-                    div("phase-info") {
-                        h2 { +"chess.waiting.title".t(lang) }
-                        val connected = game.connectedPlayers.count { game.colorFor(it.sessionId) != null }
-                        p { +"chess.waiting.players".t(lang, connected) }
-                        p("hint") { +"chess.waiting.hint".t(lang) }
-                    }
+                    val connected = game.connectedPlayers.count { game.colorFor(it.sessionId) != null }
+                    p("turn-line turn-wait") { +"chess.waiting.title".t(lang) }
+                    p("hint") { +"chess.waiting.players".t(lang, connected) }
+                    p("hint") { +"chess.waiting.hint".t(lang) }
                 }
 
                 ChessPhase.IN_PROGRESS -> {
-                    div("phase-info") {
-                        h2 { +"chess.inProgress.title".t(lang) }
-                        val turnText = if (game.turn == ChessColor.WHITE) "chess.color.white".t(lang) else "chess.color.black".t(lang)
-                        val checkedKingSquare = game.checkedKingSquare()
-                        when {
-                            yourColor == null -> p("turn-line") { +"chess.turn".t(lang, turnText) }
-                            yourColor == game.turn -> p("turn-line turn-your") { +"chess.turn.yours".t(lang) }
-                            else -> p("turn-line turn-wait") { +"chess.turn.wait".t(lang, turnText) }
-                        }
-                        p("check-alert") { +(if (checkedKingSquare != null) "chess.check".t(lang) else "") }
+                    val checkedKingSquare = game.checkedKingSquare()
+                    val turnText = if (game.turn == ChessColor.WHITE) "chess.color.white".t(lang) else "chess.color.black".t(lang)
+                    when {
+                        yourColor == null -> p("turn-line") { +"chess.turn".t(lang, turnText) }
+                        yourColor == game.turn -> p("turn-line turn-your") { +"chess.turn.yours".t(lang) }
+                        else -> p("turn-line turn-wait") { +"chess.turn.wait".t(lang, turnText) }
+                    }
+                    p("check-alert") { +(if (checkedKingSquare != null) "chess.check".t(lang) else "") }
 
-                        if (yourColor != null) {
-                            renderMoveForm(game, lang)
-                        } else {
-                            p("hint") { +"chess.spectator.hint".t(lang) }
-                        }
-
-                        renderBoard(game, yourColor ?: ChessColor.WHITE, yourColor, checkedKingSquare, true)
+                    if (yourColor != null) {
+                        renderMoveForm(game, lang)
+                    } else {
+                        p("hint") { +"chess.spectator.hint".t(lang) }
                     }
                 }
 
                 ChessPhase.GAME_OVER -> {
-                    div("phase-info game-over") {
-                        h2 { +"phase.gameOver.title".t(lang) }
-                        val winner = game.winner()
-                        if (winner != null) {
-                            p("winner-text") { +"chess.winner".t(lang, winner.name) }
-                        } else if (game.endReason == "stalemate") {
-                            p("winner-text") { +"chess.gameOver.stalemate".t(lang) }
+                    val winner = game.winner()
+                    if (winner != null) {
+                        p("winner-text") { +"chess.winner".t(lang, winner.name) }
+                    } else if (game.endReason == "stalemate") {
+                        p("winner-text") { +"chess.gameOver.stalemate".t(lang) }
+                    }
+                    val reasonText =
+                        when (game.endReason) {
+                            "disconnect" -> "chess.gameOver.disconnect".t(lang)
+                            "checkmate" -> "chess.gameOver.checkmate".t(lang)
+                            "stalemate" -> "chess.gameOver.stalemateHint".t(lang)
+                            else -> null
                         }
-                        val reasonText =
-                            when (game.endReason) {
-                                "disconnect" -> "chess.gameOver.disconnect".t(lang)
-                                "checkmate" -> "chess.gameOver.checkmate".t(lang)
-                                "stalemate" -> "chess.gameOver.stalemateHint".t(lang)
-                                else -> null
-                            }
-                        if (reasonText != null) {
-                            p("hint") { +reasonText }
-                        }
-                        val checkmatedKingSquare =
-                            if (game.endReason == "checkmate") {
-                                game.kingSquare(game.turn)
-                            } else {
-                                null
-                            }
-                        renderBoard(game, yourColor ?: ChessColor.WHITE, yourColor, checkmatedKingSquare, true)
-                        if (isCreator) {
-                            button(classes = "btn btn-primary") {
-                                hxPost("/chess/${game.id}/new-game")
-                                hxSwap(HxSwapOption.NONE)
-                                +"button.playAgain".t(lang)
-                            }
+                    if (reasonText != null) {
+                        p("hint") { +reasonText }
+                    }
+                    if (isCreator) {
+                        button(classes = "btn btn-primary") {
+                            hxPost("/chess/${game.id}/new-game")
+                            hxSwap(HxSwapOption.NONE)
+                            +"button.playAgain".t(lang)
                         }
                     }
                 }
+            }
+        }
+
+        when (game.phase) {
+            ChessPhase.IN_PROGRESS -> {
+                val checkedKingSquare = game.checkedKingSquare()
+                div("chess-board-stage chess-board-stage-outside") {
+                    renderBoard(game, yourColor ?: ChessColor.WHITE, yourColor, checkedKingSquare, true)
+                }
+            }
+
+            ChessPhase.GAME_OVER -> {
+                val checkmatedKingSquare =
+                    if (game.endReason == "checkmate") {
+                        game.kingSquare(game.turn)
+                    } else {
+                        null
+                    }
+                div("chess-board-stage chess-board-stage-outside") {
+                    renderBoard(game, yourColor ?: ChessColor.WHITE, yourColor, checkmatedKingSquare, true)
+                }
+            }
+
+            ChessPhase.WAITING_FOR_PLAYERS -> {
+                // no board while waiting
             }
         }
 
