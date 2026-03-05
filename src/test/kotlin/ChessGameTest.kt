@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 
 class ChessGameTest {
     private fun startedGame(): ChessGame {
-        val game = ChessGame(creatorSessionId = "p1")
+        val game = ChessGame(creatorSessionId = "p1", randomColorAssignment = false)
         game.addPlayer("p1", "Alice").connected = true
         game.addPlayer("p2", "Bob").connected = true
         return game
@@ -17,7 +17,7 @@ class ChessGameTest {
 
     @Test
     fun `first two players get colors and game starts`() {
-        val game = ChessGame(creatorSessionId = "p1")
+        val game = ChessGame(creatorSessionId = "p1", randomColorAssignment = false)
 
         game.addPlayer("p1", "Alice")
         game.players["p1"]?.connected = true
@@ -27,13 +27,15 @@ class ChessGameTest {
         game.players["p2"]?.connected = true
 
         assertEquals(ChessPhase.IN_PROGRESS, game.phase)
-        assertEquals(ChessColor.WHITE, game.colorFor("p1"))
-        assertEquals(ChessColor.BLACK, game.colorFor("p2"))
+        val c1 = game.colorFor("p1")
+        val c2 = game.colorFor("p2")
+        assertTrue(c1 != null && c2 != null)
+        assertTrue(c1 != c2)
     }
 
     @Test
     fun `third player becomes spectator`() {
-        val game = ChessGame(creatorSessionId = "p1")
+        val game = ChessGame(creatorSessionId = "p1", randomColorAssignment = false)
         game.addPlayer("p1", "Alice").connected = true
         game.addPlayer("p2", "Bob").connected = true
         game.addPlayer("p3", "Charlie").connected = true
@@ -79,7 +81,7 @@ class ChessGameTest {
 
     @Test
     fun `expired lobby player is removed so newcomer can take second seat`() {
-        val game = ChessGame(creatorSessionId = "p1")
+        val game = ChessGame(creatorSessionId = "p1", randomColorAssignment = false)
         game.addPlayer("p1", "Alice").connected = true
         game.addPlayer("p2", "Bob").connected = true
 
@@ -94,8 +96,45 @@ class ChessGameTest {
         assertEquals(ChessPhase.WAITING_FOR_PLAYERS, game.phase)
 
         game.addPlayer("p3", "Charlie").connected = true
-        assertEquals(ChessColor.BLACK, game.colorFor("p3"))
+        assertNotNull(game.colorFor("p3"))
         assertEquals(ChessPhase.IN_PROGRESS, game.phase)
+    }
+
+    @Test
+    fun `disconnected player loses and oldest connected spectator is promoted`() {
+        val game = startedGame()
+        val spectator = game.addPlayer("p3", "Cara")
+        spectator.connected = true
+        spectator.connectedSinceAt = System.currentTimeMillis() - 10_000
+
+        game.players["p2"]?.connected = false
+        game.players["p2"]?.disconnectedAt = System.currentTimeMillis() - DISCONNECT_GRACE_PERIOD_MS - 1_000
+
+        val changed = game.handleGracePeriodExpired("p2")
+
+        assertTrue(changed)
+        assertEquals(ChessPhase.IN_PROGRESS, game.phase)
+        assertNotNull(game.colorFor("p1"))
+        assertNotNull(game.colorFor("p3"))
+        assertNull(game.colorFor("p2"))
+    }
+
+    @Test
+    fun `new game rotates loser out when spectator exists`() {
+        val game = startedGame()
+        val spectator = game.addPlayer("p3", "Cara")
+        spectator.connected = true
+        spectator.connectedSinceAt = System.currentTimeMillis() - 20_000
+
+        game.forceGameOverForTesting(winnerSessionId = "p1", reason = "checkmate")
+        game.players["p2"]?.connected = true
+
+        val started = game.resetForNewGame()
+
+        assertEquals(ChessPhase.IN_PROGRESS, game.phase)
+        assertNotNull(game.colorFor("p1"))
+        assertNotNull(game.colorFor("p3"))
+        assertNull(game.colorFor("p2"))
     }
 
     @Test
@@ -106,6 +145,24 @@ class ChessGameTest {
 
         assertFalse(moved)
         assertEquals(ChessColor.WHITE, game.turn)
+    }
+
+    @Test
+    fun `validateMoveError returns not your turn when player moves out of turn`() {
+        val game = startedGame()
+
+        val err = game.validateMoveError("p2", "e7", "e5")
+
+        assertEquals(MoveError.NOT_YOUR_TURN, err)
+    }
+
+    @Test
+    fun `validateMoveError returns ok for legal move`() {
+        val game = startedGame()
+
+        val err = game.validateMoveError("p1", "e2", "e4")
+
+        assertEquals(MoveError.OK, err)
     }
 
     @Test

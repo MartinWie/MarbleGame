@@ -23,6 +23,122 @@ function initGame(gameId) {
     var previousMarbleCount = null;
     var reconnectTimeout = null;
     var isConnecting = false;
+    var soundMuted = localStorage.getItem('marblegame_sound_muted') === '1';
+    var audioCtx = null;
+    var audioUnlocked = false;
+    var lastPhaseClass = '';
+    var lastYourTurn = false;
+    var soundOnIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-volume-up" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M11.536 14.01A8.47 8.47 0 0 0 14.026 8a8.47 8.47 0 0 0-2.49-6.01l-.708.707A7.48 7.48 0 0 1 13.025 8c0 2.071-.84 3.946-2.197 5.303z"/><path d="M10.121 12.596A6.48 6.48 0 0 0 12.025 8a6.48 6.48 0 0 0-1.904-4.596l-.707.707A5.48 5.48 0 0 1 11.025 8a5.48 5.48 0 0 1-1.61 3.89z"/><path d="M10.025 8a4.5 4.5 0 0 1-1.318 3.182L8 10.475A3.5 3.5 0 0 0 9.025 8c0-.966-.392-1.841-1.025-2.475l.707-.707A4.5 4.5 0 0 1 10.025 8M7 4a.5.5 0 0 0-.812-.39L3.825 5.5H1.5A.5.5 0 0 0 1 6v4a.5.5 0 0 0 .5.5h2.325l2.363 1.89A.5.5 0 0 0 7 12zM4.312 6.39 6 5.04v5.92L4.312 9.61A.5.5 0 0 0 4 9.5H2v-3h2a.5.5 0 0 0 .312-.11"/></svg>';
+    var soundMutedIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-volume-mute-fill" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6.717 3.55A.5.5 0 0 1 7 4v8a.5.5 0 0 1-.812.39L3.825 10.5H1.5A.5.5 0 0 1 1 10V6a.5.5 0 0 1 .5-.5h2.325l2.363-1.89a.5.5 0 0 1 .529-.06m7.137 2.096a.5.5 0 0 1 0 .708L12.207 8l1.647 1.646a.5.5 0 0 1-.708.708L11.5 8.707l-1.646 1.647a.5.5 0 0 1-.708-.708L10.793 8 9.146 6.354a.5.5 0 1 1 .708-.708L11.5 7.293l1.646-1.647a.5.5 0 0 1 .708 0"/></svg>';
+
+    function showToast(message, atTop) {
+        if (!message) return;
+        var existing = document.getElementById('chess-toast');
+        if (existing) existing.remove();
+
+        var toast = document.createElement('div');
+        toast.id = 'chess-toast';
+        toast.className = 'chess-toast';
+        if (atTop) toast.classList.add('toast-top');
+        toast.textContent = message;
+        document.body.appendChild(toast);
+
+        requestAnimationFrame(function() {
+            toast.classList.add('show');
+        });
+
+        setTimeout(function() {
+            toast.classList.remove('show');
+            setTimeout(function() {
+                if (toast.parentNode) toast.parentNode.removeChild(toast);
+            }, 220);
+        }, 1400);
+    }
+
+    function ensureAudioContext() {
+        if (!audioCtx) {
+            var Ctx = window.AudioContext || window.webkitAudioContext;
+            if (Ctx) audioCtx = new Ctx();
+        }
+        return audioCtx;
+    }
+
+    function unlockAudio() {
+        var ctx = ensureAudioContext();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') {
+            ctx.resume().catch(function() {});
+        }
+        audioUnlocked = true;
+    }
+
+    function playTone(freq, durationMs, gain) {
+        if (soundMuted) return;
+        var ctx = ensureAudioContext();
+        if (!ctx || !audioUnlocked) return;
+        var osc = ctx.createOscillator();
+        var amp = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        amp.gain.value = gain;
+        osc.connect(amp);
+        amp.connect(ctx.destination);
+        var now = ctx.currentTime;
+        osc.start(now);
+        amp.gain.exponentialRampToValueAtTime(0.0001, now + durationMs / 1000);
+        osc.stop(now + durationMs / 1000);
+    }
+
+    function playRoundStartSound() {
+        playTone(523, 180, 0.06);
+        setTimeout(function() { playTone(659, 220, 0.05); }, 140);
+    }
+
+    function playYourTurnSound() {
+        playTone(784, 220, 0.05);
+    }
+
+    function syncSoundButton() {
+        var btn = document.getElementById('sound-btn');
+        if (!btn) return;
+        var onText = btn.dataset.soundOn || 'Sound On';
+        var offText = btn.dataset.soundOff || 'Sound Off';
+        var iconWrap = btn.querySelector('.sound-icon');
+        if (iconWrap) {
+            iconWrap.innerHTML = soundMuted ? soundMutedIcon : soundOnIcon;
+        }
+        var stateText = soundMuted ? offText : onText;
+        btn.setAttribute('aria-label', stateText);
+        btn.setAttribute('title', stateText);
+    }
+
+    function bindSoundButton() {
+        var btn = document.getElementById('sound-btn');
+        if (!btn || btn.dataset.soundBound === '1') return;
+        btn.dataset.soundBound = '1';
+        syncSoundButton();
+        btn.addEventListener('click', function() {
+            soundMuted = !soundMuted;
+            localStorage.setItem('marblegame_sound_muted', soundMuted ? '1' : '0');
+            unlockAudio();
+            syncSoundButton();
+        });
+    }
+
+    function phaseState() {
+        var phaseInfo = document.querySelector('.phase-info');
+        if (!phaseInfo) return { phaseClass: '', yourTurn: false };
+        var phaseClass = phaseInfo.className || '';
+        var heading = phaseInfo.querySelector('h2');
+        var turnLine = phaseInfo.querySelector('.turn-your');
+        var yourTurn = false;
+        if (turnLine) {
+            yourTurn = true;
+        } else if (heading) {
+            yourTurn = /Your Turn|Du bist dran/i.test(heading.textContent || '');
+        }
+        return { phaseClass: phaseClass, yourTurn: yourTurn };
+    }
 
     function bindShareButton() {
         var shareBtn = document.getElementById('share-btn');
@@ -42,11 +158,15 @@ function initGame(gameId) {
         }
 
         function showCopied(btn) {
-            var shareText = btn.dataset.shareText || '';
-            btn.textContent = btn.dataset.copiedText || shareText;
+            var shareText = btn.dataset.shareText || 'Share';
+            var copiedText = btn.dataset.copiedText || shareText;
+            btn.setAttribute('aria-label', copiedText);
+            btn.setAttribute('title', copiedText);
             btn.classList.add('copied');
+            showToast(copiedText, true);
             setTimeout(function() {
-                btn.textContent = shareText;
+                btn.setAttribute('aria-label', shareText);
+                btn.setAttribute('title', shareText);
                 btn.classList.remove('copied');
             }, 2000);
         }
@@ -351,7 +471,17 @@ function initGame(gameId) {
             startCountdowns();
             setupMarblePicker();
             bindShareButton();
+            bindSoundButton();
             bindQrButton();
+            var phase = phaseState();
+            if (lastPhaseClass && phase.phaseClass && lastPhaseClass !== phase.phaseClass && /phase-info/.test(phase.phaseClass)) {
+                playRoundStartSound();
+            }
+            if (!lastYourTurn && phase.yourTurn) {
+                playYourTurnSound();
+            }
+            lastPhaseClass = phase.phaseClass;
+            lastYourTurn = phase.yourTurn;
             checkMarbleChanges();
             var countdowns = document.querySelectorAll('.player-countdown');
             console.log('Found ' + countdowns.length + ' countdown elements');
@@ -405,7 +535,12 @@ function initGame(gameId) {
     startCountdowns();
     setupMarblePicker();
     bindShareButton();
+    bindSoundButton();
     bindQrButton();
+    var initialPhase = phaseState();
+    lastPhaseClass = initialPhase.phaseClass;
+    lastYourTurn = initialPhase.yourTurn;
+    document.addEventListener('pointerdown', unlockAudio, { once: true, passive: true });
     previousMarbleCount = getCurrentMarbleCount();
     
     // Cleanup on page unload

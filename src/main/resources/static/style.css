@@ -110,15 +110,19 @@ a:hover {
     background: transparent;
     border: 1px solid var(--accent-blue);
     color: var(--accent-blue);
-    padding: 8px 16px;
+    padding: 8px;
     border-radius: 8px;
     cursor: pointer;
     font-size: 0.9rem;
     font-weight: 600;
     transition: all 0.2s ease;
     margin-top: 0;
-    width: auto;
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
     display: inline-flex;
+    align-items: center;
+    justify-content: center;
     margin-left: 0;
     margin-right: 0;
 }
@@ -152,6 +156,11 @@ a:hover {
     padding: 8px;
 }
 
+.header-action-btn:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+}
+
 #qr-btn:hover,
 #qr-btn.active {
     background: var(--accent-blue);
@@ -165,9 +174,23 @@ a:hover {
     height: 20px;
 }
 
+.share-icon,
+.sound-icon {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+}
+
 .qr-icon svg {
     width: 20px;
     height: 20px;
+    fill: currentColor;
+}
+
+.share-icon svg,
+.sound-icon svg {
+    width: 16px;
+    height: 16px;
     fill: currentColor;
 }
 
@@ -222,6 +245,25 @@ a:hover {
     background: var(--accent-green);
     border-color: var(--accent-green);
     color: var(--bg-dark);
+}
+
+#sound-btn {
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#sound-btn:hover,
+#sound-btn.active {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: #ffffff;
 }
 
 /* Cards */
@@ -711,6 +753,11 @@ input::placeholder {
     box-shadow: none;
 }
 
+.chess-square.check-capture-target::after {
+    border: 5px solid rgba(255, 193, 7, 0.98);
+    box-shadow: 0 0 0 2px rgba(255, 71, 87, 0.55), 0 0 12px rgba(255, 193, 7, 0.55);
+}
+
 .turn-your {
     color: var(--accent-green);
     font-weight: 800;
@@ -754,6 +801,16 @@ input::placeholder {
     transform: translateX(-50%) translateY(0);
 }
 
+.chess-toast.toast-top {
+    top: calc(16px + env(safe-area-inset-top));
+    bottom: auto;
+    transform: translateX(-50%) translateY(-8px);
+}
+
+.chess-toast.toast-top.show {
+    transform: translateX(-50%) translateY(0);
+}
+
 .chess-coachmark {
     position: fixed;
     left: 50%;
@@ -788,15 +845,19 @@ input::placeholder {
 }
 
 .move-trail-piece {
-    position: fixed;
+    position: absolute;
     z-index: 1600;
     font-size: clamp(2rem, 5.4vw, 4rem);
     line-height: 1;
     pointer-events: none;
     transform: translate(-50%, -50%);
     opacity: 1;
-    transition: transform 500ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 500ms ease;
+    transition: transform 1400ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 1400ms ease;
     filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.45));
+}
+
+.chess-piece.move-arrival-hidden {
+    opacity: 0;
 }
 
 .capture-spark {

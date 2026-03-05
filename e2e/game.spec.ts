@@ -158,6 +158,24 @@ test.describe('Chess Joining', () => {
     }, { gameId, from, to });
   }
 
+  async function legalMoves(page: Page, gameId: string, from: string): Promise<string[]> {
+    return page.evaluate(async ({ gameId, from }) => {
+      const res = await fetch(`/chess/${gameId}/legal-moves?from=${encodeURIComponent(from)}`);
+      if (!res.ok) return [];
+      const text = await res.text();
+      if (!text) return [];
+      return text.split(',').filter(Boolean);
+    }, { gameId, from });
+  }
+
+  async function resolveWhiteBlackPages(p1: Page, p2: Page, gameId: string) {
+    const p1Moves = await legalMoves(p1, gameId, 'e2');
+    if (p1Moves.length > 0) return { whitePage: p1, blackPage: p2 };
+    const p2Moves = await legalMoves(p2, gameId, 'e2');
+    if (p2Moves.length > 0) return { whitePage: p2, blackPage: p1 };
+    throw new Error('Could not resolve white/black player pages via legal-moves');
+  }
+
   test('second player can join as opponent, third as spectator', async ({ browser }) => {
     const hostContext = await browser.newContext();
     const host = await hostContext.newPage();
@@ -205,14 +223,16 @@ test.describe('Chess Joining', () => {
       const gameId = await createChessGame(p1, 'Host');
       await joinChessGame(p2, gameId, 'Opponent');
 
-      const moveStatus = await postMove(p1, gameId, 'e2', 'e4');
+      const { whitePage, blackPage } = await resolveWhiteBlackPages(p1, p2, gameId);
+
+      const moveStatus = await postMove(whitePage, gameId, 'e2', 'e4');
       expect(moveStatus).toBe(200);
 
       // Turn should switch after a legal move.
-      const secondWhiteMove = await postMove(p1, gameId, 'e4', 'e5');
-      expect(secondWhiteMove).toBe(400);
+      const secondWhiteMove = await postMove(whitePage, gameId, 'e4', 'e5');
+      expect(secondWhiteMove).toBe(409);
 
-      const blackReply = await postMove(p2, gameId, 'e7', 'e5');
+      const blackReply = await postMove(blackPage, gameId, 'e7', 'e5');
       expect(blackReply).toBe(200);
     } finally {
       await p1Context.close();
@@ -233,8 +253,10 @@ test.describe('Chess Joining', () => {
       await joinChessGame(p2, gameId, 'Opponent');
       await joinChessGame(p3, gameId, 'Spectator');
 
-      const wrongTurnStatus = await postMove(p2, gameId, 'e7', 'e5');
-      expect(wrongTurnStatus).toBe(400);
+      const { blackPage } = await resolveWhiteBlackPages(p1, p2, gameId);
+
+      const wrongTurnStatus = await postMove(blackPage, gameId, 'e7', 'e5');
+      expect(wrongTurnStatus).toBe(409);
 
       const spectatorStatus = await postMove(p3, gameId, 'e2', 'e4');
       expect(spectatorStatus).toBe(400);
@@ -255,24 +277,26 @@ test.describe('Chess Joining', () => {
       const gameId = await createChessGame(p1, 'Host');
       await joinChessGame(p2, gameId, 'Opponent');
 
+      const { whitePage, blackPage } = await resolveWhiteBlackPages(p1, p2, gameId);
+
       // En passant sequence
-      expect(await postMove(p1, gameId, 'e2', 'e4')).toBe(200);
-      expect(await postMove(p2, gameId, 'a7', 'a6')).toBe(200);
-      expect(await postMove(p1, gameId, 'e4', 'e5')).toBe(200);
-      expect(await postMove(p2, gameId, 'd7', 'd5')).toBe(200);
-      expect(await postMove(p1, gameId, 'e5', 'd6')).toBe(200);
+      expect(await postMove(whitePage, gameId, 'e2', 'e4')).toBe(200);
+      expect(await postMove(blackPage, gameId, 'a7', 'a6')).toBe(200);
+      expect(await postMove(whitePage, gameId, 'e4', 'e5')).toBe(200);
+      expect(await postMove(blackPage, gameId, 'd7', 'd5')).toBe(200);
+      expect(await postMove(whitePage, gameId, 'e5', 'd6')).toBe(200);
 
       // Prepare and perform white kingside castling
-      expect(await postMove(p2, gameId, 'a6', 'a5')).toBe(200);
-      expect(await postMove(p1, gameId, 'g1', 'f3')).toBe(200);
-      expect(await postMove(p2, gameId, 'a5', 'a4')).toBe(200);
-      expect(await postMove(p1, gameId, 'f1', 'e2')).toBe(200);
-      expect(await postMove(p2, gameId, 'h7', 'h6')).toBe(200);
-      expect(await postMove(p1, gameId, 'e1', 'g1')).toBe(200);
+      expect(await postMove(blackPage, gameId, 'a6', 'a5')).toBe(200);
+      expect(await postMove(whitePage, gameId, 'g1', 'f3')).toBe(200);
+      expect(await postMove(blackPage, gameId, 'a5', 'a4')).toBe(200);
+      expect(await postMove(whitePage, gameId, 'f1', 'e2')).toBe(200);
+      expect(await postMove(blackPage, gameId, 'h7', 'h6')).toBe(200);
+      expect(await postMove(whitePage, gameId, 'e1', 'g1')).toBe(200);
 
       // Castled king cannot castle again from g1.
-      expect(await postMove(p2, gameId, 'b7', 'b6')).toBe(200);
-      expect(await postMove(p1, gameId, 'g1', 'e1')).toBe(400);
+      expect(await postMove(blackPage, gameId, 'b7', 'b6')).toBe(200);
+      expect(await postMove(whitePage, gameId, 'g1', 'e1')).toBe(400);
     } finally {
       await p1Context.close();
       await p2Context.close();
@@ -289,14 +313,17 @@ test.describe('Chess Joining', () => {
       const gameId = await createChessGame(p1, 'Host');
       await joinChessGame(p2, gameId, 'Opponent');
 
-      expect(await postMove(p1, gameId, 'f2', 'f3')).toBe(200);
-      expect(await postMove(p2, gameId, 'e7', 'e5')).toBe(200);
-      expect(await postMove(p1, gameId, 'g2', 'g4')).toBe(200);
-      expect(await postMove(p2, gameId, 'd8', 'h4')).toBe(200);
+      const { whitePage, blackPage } = await resolveWhiteBlackPages(p1, p2, gameId);
+      const blackWinnerName = blackPage === p1 ? 'Host' : 'Opponent';
 
-      await expect.poll(async () => (await p1.locator('.hint').first().textContent())?.toLowerCase()).toContain('checkmate');
-      await expect(p1.locator('.winner-text')).toContainText('Opponent');
-      await expect(p2.locator('.winner-text')).toContainText('Opponent');
+      expect(await postMove(whitePage, gameId, 'f2', 'f3')).toBe(200);
+      expect(await postMove(blackPage, gameId, 'e7', 'e5')).toBe(200);
+      expect(await postMove(whitePage, gameId, 'g2', 'g4')).toBe(200);
+      expect(await postMove(blackPage, gameId, 'd8', 'h4')).toBe(200);
+
+      await expect.poll(async () => (await whitePage.locator('.hint').first().textContent())?.toLowerCase()).toContain('checkmate');
+      await expect(blackPage.locator('.winner-text')).toContainText(blackWinnerName);
+      await expect(whitePage.locator('.winner-text')).toContainText(blackWinnerName);
     } finally {
       await p1Context.close();
       await p2Context.close();
@@ -313,7 +340,9 @@ test.describe('Chess Joining', () => {
       const gameId = await createChessGame(p1, 'Host');
       await joinChessGame(p2, gameId, 'Opponent');
 
-      const status = await postMove(p1, gameId, 'e2', 'e4');
+      const { whitePage } = await resolveWhiteBlackPages(p1, p2, gameId);
+
+      const status = await postMove(whitePage, gameId, 'e2', 'e4');
       expect(status).toBe(200);
 
       await expect.poll(async () => await p1.locator('.chess-square[data-square="e2"]').evaluate((el) => el.classList.contains('last-move-from'))).toBe(true);

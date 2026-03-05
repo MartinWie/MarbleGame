@@ -530,6 +530,7 @@ class SSEEndpointTest {
             val gameId = gameUrl.substringAfterLast("/game/")
 
             assertTrue(body.contains("share-btn"), "Should have share button")
+            assertTrue(body.contains("sound-btn"), "Should have sound toggle button")
             assertTrue(body.contains("data-share-url=\"/game/$gameId/join\""), "Share URL should point to join page")
             assertTrue(body.contains("qr-btn"), "Should have QR button")
             assertTrue(body.contains("qr-modal"), "Should have QR modal")
@@ -565,6 +566,7 @@ class SSEEndpointTest {
             val gameId = chessUrl.substringAfterLast("/chess/")
 
             assertTrue(body.contains("share-btn"), "Should have share button")
+            assertTrue(body.contains("sound-btn"), "Should have sound toggle button")
             assertTrue(body.contains("data-share-url=\"/chess/$gameId/join\""), "Share URL data attribute should point to chess join page")
             assertTrue(body.contains("data-share-text"), "Share text data attribute should be present")
             assertTrue(body.contains("data-copied-text"), "Copied text data attribute should be present")

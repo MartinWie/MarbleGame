@@ -16,6 +16,50 @@ async function joinChessGame(page, gameId: string, name: string) {
   await expect(page).toHaveURL(new RegExp(`/chess/${gameId}$`));
 }
 
+async function legalMoves(page, gameId: string, from: string): Promise<string[]> {
+  return page.evaluate(async ({ gameId, from }) => {
+    const res = await fetch(`/chess/${gameId}/legal-moves?from=${encodeURIComponent(from)}`);
+    if (!res.ok) return [];
+    const text = await res.text();
+    if (!text) return [];
+    return text.split(',').filter(Boolean);
+  }, { gameId, from });
+}
+
+async function playMoveEither(p1, p2, gameId: string, from: string, to: string) {
+  const s1 = await p1.evaluate(async ({ gameId, from, to }) => {
+    const body = new URLSearchParams({ from, to });
+    const response = await fetch(`/chess/${gameId}/move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+      body: body.toString(),
+    });
+    return response.status;
+  }, { gameId, from, to });
+  if (s1 === 200) return;
+  const s2 = await p2.evaluate(async ({ gameId, from, to }) => {
+    const body = new URLSearchParams({ from, to });
+    const response = await fetch(`/chess/${gameId}/move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+      body: body.toString(),
+    });
+    return response.status;
+  }, { gameId, from, to });
+  expect(s2).toBe(200);
+}
+
+async function resolveWhiteBlackPages(p1, p2) {
+  await expect(p1.locator('.chess-board')).toBeVisible();
+  await expect(p2.locator('.chess-board')).toBeVisible();
+  const gameId = new URL(p1.url()).pathname.split('/chess/')[1];
+  const p1Moves = await legalMoves(p1, gameId, 'e2');
+  if (p1Moves.length > 0) return { whitePage: p1, blackPage: p2 };
+  const p2Moves = await legalMoves(p2, gameId, 'e2');
+  if (p2Moves.length > 0) return { whitePage: p2, blackPage: p1 };
+  throw new Error('Could not resolve white/black player pages via legal-moves');
+}
+
 test.describe('Chess Fixes', () => {
   test('move trail keeps moved piece color class', async ({ browser }) => {
     const p1Context = await browser.newContext();
@@ -29,15 +73,25 @@ test.describe('Chess Fixes', () => {
 
       await expect(p1.locator('.player-name:has-text("GuestTrail")')).toBeVisible();
 
-      await p1.locator('.chess-square[data-square="e2"]').click();
-      await p1.locator('.chess-square[data-square="e4"]').click();
+      await playMoveEither(p1, p2, gameId, 'e2', 'e4');
 
-      await expect(p1.locator('.move-trail-piece.piece-white')).toBeVisible();
+      await expect
+        .poll(async () => {
+          const c1 = await p1.locator('.chess-square.moved .chess-piece.piece-white').count();
+          const c2 = await p2.locator('.chess-square.moved .chess-piece.piece-white').count();
+          return c1 + c2;
+        })
+        .toBeGreaterThan(0);
 
-      await p2.locator('.chess-square[data-square="e7"]').click();
-      await p2.locator('.chess-square[data-square="e5"]').click();
+      await playMoveEither(p1, p2, gameId, 'e7', 'e5');
 
-      await expect(p2.locator('.move-trail-piece.piece-black')).toBeVisible();
+      await expect
+        .poll(async () => {
+          const c1 = await p1.locator('.chess-square.moved .chess-piece.piece-black').count();
+          const c2 = await p2.locator('.chess-square.moved .chess-piece.piece-black').count();
+          return c1 + c2;
+        })
+        .toBeGreaterThan(0);
     } finally {
       await p1Context.close();
       await p2Context.close();
@@ -107,4 +161,30 @@ test.describe('Chess Fixes', () => {
       await context.close();
     }
   });
+
+  test('wrong-turn shows dedicated not-your-turn toast', async ({ browser }) => {
+    const p1Context = await browser.newContext();
+    const p1 = await p1Context.newPage();
+    const p2Context = await browser.newContext();
+    const p2 = await p2Context.newPage();
+
+    try {
+      const gameId = await createChessGame(p1, 'HostTurnMsg');
+      await joinChessGame(p2, gameId, 'GuestTurnMsg');
+
+      const { whitePage, blackPage } = await resolveWhiteBlackPages(p1, p2);
+      await expect(whitePage.locator('.chess-board')).toBeVisible();
+      await expect(blackPage.locator('.chess-board')).toBeVisible();
+
+      // Black tries to move while white is to play.
+      await blackPage.locator('.chess-square[data-square="e7"]').click();
+      await blackPage.locator('.chess-square[data-square="e5"]').click();
+
+      await expect(blackPage.locator('#chess-toast')).toContainText(/not your turn|nicht am zug/i);
+    } finally {
+      await p1Context.close();
+      await p2Context.close();
+    }
+  });
+
 });

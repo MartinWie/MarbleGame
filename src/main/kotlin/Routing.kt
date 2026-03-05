@@ -913,7 +913,12 @@ fun Application.configureRouting() {
             val to = params["to"] ?: return@post
 
             if (!game.makeMove(session.id, from, to)) {
-                call.respondText("Invalid move", status = HttpStatusCode.BadRequest)
+                val err = game.validateMoveError(session.id, from, to)
+                if (err == MoveError.NOT_YOUR_TURN) {
+                    call.respondText("Not your turn", status = HttpStatusCode.Conflict)
+                } else {
+                    call.respondText("Invalid move", status = HttpStatusCode.BadRequest)
+                }
                 return@post
             }
 

@@ -100,11 +100,18 @@ class Player(
         set(value) {
             val wasConnected = _connected.getAndSet(value)
             if (value) {
+                if (!wasConnected) {
+                    connectedSinceAt = System.currentTimeMillis()
+                }
                 disconnectedAt = null
             } else if (wasConnected) {
                 disconnectedAt = System.currentTimeMillis()
             }
         }
+
+    /** Timestamp when the current live connection started (null when never connected). */
+    var connectedSinceAt: Long? = null
+        internal set
 
     /**
      * Timestamp when the player disconnected.

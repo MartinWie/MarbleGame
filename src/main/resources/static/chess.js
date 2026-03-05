@@ -26,6 +26,13 @@ function initChess(gameId) {
     var lastTouchHandledSquare = null;
     var lastUpdateAt = Date.now();
     var moveInFlight = false;
+    var soundMuted = localStorage.getItem('marblegame_sound_muted') === '1';
+    var audioCtx = null;
+    var audioUnlocked = false;
+    var previousTurnColor = '';
+    var lastAnimatedMoveMeta = '';
+    var soundOnIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-volume-up" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M11.536 14.01A8.47 8.47 0 0 0 14.026 8a8.47 8.47 0 0 0-2.49-6.01l-.708.707A7.48 7.48 0 0 1 13.025 8c0 2.071-.84 3.946-2.197 5.303z"/><path d="M10.121 12.596A6.48 6.48 0 0 0 12.025 8a6.48 6.48 0 0 0-1.904-4.596l-.707.707A5.48 5.48 0 0 1 11.025 8a5.48 5.48 0 0 1-1.61 3.89z"/><path d="M10.025 8a4.5 4.5 0 0 1-1.318 3.182L8 10.475A3.5 3.5 0 0 0 9.025 8c0-.966-.392-1.841-1.025-2.475l.707-.707A4.5 4.5 0 0 1 10.025 8M7 4a.5.5 0 0 0-.812-.39L3.825 5.5H1.5A.5.5 0 0 0 1 6v4a.5.5 0 0 0 .5.5h2.325l2.363 1.89A.5.5 0 0 0 7 12zM4.312 6.39 6 5.04v5.92L4.312 9.61A.5.5 0 0 0 4 9.5H2v-3h2a.5.5 0 0 0 .312-.11"/></svg>';
+    var soundMutedIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-volume-mute-fill" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6.717 3.55A.5.5 0 0 1 7 4v8a.5.5 0 0 1-.812.39L3.825 10.5H1.5A.5.5 0 0 1 1 10V6a.5.5 0 0 1 .5-.5h2.325l2.363-1.89a.5.5 0 0 1 .529-.06m7.137 2.096a.5.5 0 0 1 0 .708L12.207 8l1.647 1.646a.5.5 0 0 1-.708.708L11.5 8.707l-1.646 1.647a.5.5 0 0 1-.708-.708L10.793 8 9.146 6.354a.5.5 0 1 1 .708-.708L11.5 7.293l1.646-1.647a.5.5 0 0 1 .708 0"/></svg>';
 
     function bindShareButton() {
         var shareBtn = document.getElementById('share-btn');
@@ -45,11 +52,15 @@ function initChess(gameId) {
         }
 
         function showCopied(btn) {
-            var shareText = btn.dataset.shareText || '';
-            btn.textContent = btn.dataset.copiedText || shareText;
+            var shareText = btn.dataset.shareText || 'Share';
+            var copiedText = btn.dataset.copiedText || shareText;
+            btn.setAttribute('aria-label', copiedText);
+            btn.setAttribute('title', copiedText);
             btn.classList.add('copied');
+            showToast(copiedText, true);
             setTimeout(function() {
-                btn.textContent = shareText;
+                btn.setAttribute('aria-label', shareText);
+                btn.setAttribute('title', shareText);
                 btn.classList.remove('copied');
             }, 2000);
         }
@@ -101,6 +112,76 @@ function initChess(gameId) {
             }
 
             clipboardCopy(shareUrl, btn);
+        });
+    }
+
+    function ensureAudioContext() {
+        if (!audioCtx) {
+            var Ctx = window.AudioContext || window.webkitAudioContext;
+            if (Ctx) audioCtx = new Ctx();
+        }
+        return audioCtx;
+    }
+
+    function unlockAudio() {
+        var ctx = ensureAudioContext();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') {
+            ctx.resume().catch(function() {});
+        }
+        audioUnlocked = true;
+    }
+
+    function playTone(freq, durationMs, gain) {
+        if (soundMuted) return;
+        var ctx = ensureAudioContext();
+        if (!ctx || !audioUnlocked) return;
+        var osc = ctx.createOscillator();
+        var amp = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        amp.gain.value = gain;
+        osc.connect(amp);
+        amp.connect(ctx.destination);
+        var now = ctx.currentTime;
+        osc.start(now);
+        amp.gain.exponentialRampToValueAtTime(0.0001, now + durationMs / 1000);
+        osc.stop(now + durationMs / 1000);
+    }
+
+    function playRoundStartSound() {
+        playTone(523, 180, 0.06);
+        setTimeout(function() { playTone(659, 220, 0.05); }, 140);
+    }
+
+    function playYourTurnSound() {
+        playTone(784, 220, 0.05);
+    }
+
+    function syncSoundButton() {
+        var btn = document.getElementById('sound-btn');
+        if (!btn) return;
+        var onText = btn.dataset.soundOn || 'Sound On';
+        var offText = btn.dataset.soundOff || 'Sound Off';
+        var iconWrap = btn.querySelector('.sound-icon');
+        if (iconWrap) {
+            iconWrap.innerHTML = soundMuted ? soundMutedIcon : soundOnIcon;
+        }
+        var stateText = soundMuted ? offText : onText;
+        btn.setAttribute('aria-label', stateText);
+        btn.setAttribute('title', stateText);
+    }
+
+    function bindSoundButton() {
+        var btn = document.getElementById('sound-btn');
+        if (!btn || btn.dataset.soundBound === '1') return;
+        btn.dataset.soundBound = '1';
+        syncSoundButton();
+        btn.addEventListener('click', function() {
+            soundMuted = !soundMuted;
+            localStorage.setItem('marblegame_sound_muted', soundMuted ? '1' : '0');
+            unlockAudio();
+            syncSoundButton();
         });
     }
 
@@ -186,6 +267,7 @@ function initChess(gameId) {
         eventSource.addEventListener('chess-update', function(e) {
             lastUpdateAt = Date.now();
             moveInFlight = false;
+            var prevTurn = previousTurnColor;
             var previousSnapshot = boardSnapshot;
             var patched = patchIncrementalState(e.data);
             if (!patched) {
@@ -197,11 +279,28 @@ function initChess(gameId) {
             legalTargetSet = {};
             updateMoveUI();
             bindShareButton();
+            bindSoundButton();
             bindQrButton();
             bindBoardInteractions();
             boardSnapshot = captureBoardSnapshot();
-            if (previousSnapshot && Object.keys(previousSnapshot).length > 0) {
-                playMoveAnimations(previousSnapshot);
+            var boardEl = document.querySelector('.chess-board');
+            if (boardEl) {
+                previousTurnColor = boardEl.getAttribute('data-turn') || '';
+                if (!boardEl.getAttribute('data-last-move-meta')) {
+                    lastAnimatedMoveMeta = '';
+                }
+                var myColor = boardEl.getAttribute('data-your-color') || '';
+                if (prevTurn && previousTurnColor && prevTurn !== previousTurnColor && myColor === previousTurnColor) {
+                    playYourTurnSound();
+                }
+                var moveMeta = boardEl.getAttribute('data-last-move-meta') || '';
+                if (moveMeta && moveMeta !== lastAnimatedMoveMeta) {
+                    playMoveAnimations(previousSnapshot);
+                    lastAnimatedMoveMeta = moveMeta;
+                }
+            }
+            if (!prevTurn && previousTurnColor) {
+                playRoundStartSound();
             }
             startCountdowns();
         });
@@ -272,6 +371,13 @@ function initChess(gameId) {
         currentBoard.setAttribute('data-perspective', incomingBoard.getAttribute('data-perspective') || 'white');
         currentBoard.setAttribute('data-checked-king', incomingBoard.getAttribute('data-checked-king') || '');
         currentBoard.setAttribute('data-show-last-move', incomingBoard.getAttribute('data-show-last-move') || '0');
+        currentBoard.setAttribute('data-turn', incomingBoard.getAttribute('data-turn') || '');
+        currentBoard.setAttribute('data-your-color', incomingBoard.getAttribute('data-your-color') || '');
+        currentBoard.setAttribute('data-en-passant', incomingBoard.getAttribute('data-en-passant') || '');
+        currentBoard.setAttribute('data-castle-wk', incomingBoard.getAttribute('data-castle-wk') || '0');
+        currentBoard.setAttribute('data-castle-wq', incomingBoard.getAttribute('data-castle-wq') || '0');
+        currentBoard.setAttribute('data-castle-bk', incomingBoard.getAttribute('data-castle-bk') || '0');
+        currentBoard.setAttribute('data-castle-bq', incomingBoard.getAttribute('data-castle-bq') || '0');
 
         currentBoard.querySelectorAll('.chess-square').forEach(function(squareEl) {
             var square = squareEl.getAttribute('data-square');
@@ -332,10 +438,16 @@ function initChess(gameId) {
             .then(function(response) {
                 if (!response.ok) {
                     moveInFlight = false;
-                    showToast(invalidMsg);
+                    if (response.status === 409) {
+                        showToast(moveForm ? (moveForm.dataset.notYourTurnMsg || invalidMsg) : invalidMsg);
+                    } else {
+                        showToast(invalidMsg);
+                    }
                     hideCoachmark();
                     localStorage.setItem('chess_hint_seen', '1');
+                    return;
                 }
+                syncTurnMetadataAfterLocalMove(fromSquare, toSquare);
             })
             .catch(function() {
                 moveInFlight = false;
@@ -375,7 +487,7 @@ function initChess(gameId) {
     }
 
 
-    function showToast(message) {
+    function showToast(message, atTop) {
         if (!message) return;
 
         var existing = document.getElementById('chess-toast');
@@ -384,6 +496,7 @@ function initChess(gameId) {
         var toast = document.createElement('div');
         toast.id = 'chess-toast';
         toast.className = 'chess-toast';
+        if (atTop) toast.classList.add('toast-top');
         toast.textContent = message;
         document.body.appendChild(toast);
 
@@ -403,6 +516,11 @@ function initChess(gameId) {
         var ghost = document.createElement('div');
         ghost.className = 'chess-drag-ghost';
         ghost.textContent = pieceEl ? (pieceEl.textContent || '') : '';
+        if (pieceEl && pieceEl.classList.contains('piece-black')) {
+            ghost.classList.add('piece-black');
+        } else {
+            ghost.classList.add('piece-white');
+        }
         ghost.style.position = 'fixed';
         ghost.style.left = '-1000px';
         ghost.style.top = '-1000px';
@@ -413,7 +531,7 @@ function initChess(gameId) {
 
     function clearHighlights() {
         document.querySelectorAll('.chess-square').forEach(function(square) {
-            square.classList.remove('selected', 'legal-target', 'capture-target', 'last-move-from', 'last-move-to');
+            square.classList.remove('selected', 'legal-target', 'capture-target', 'check-capture-target', 'last-move-from', 'last-move-to', 'checked-king');
         });
     }
 
@@ -425,11 +543,9 @@ function initChess(gameId) {
         if (checkedKingSquare) {
             var checkedEl = document.querySelector('.chess-square[data-square="' + checkedKingSquare + '"]');
             if (checkedEl) checkedEl.classList.add('checked-king');
-            // Check indication takes precedence over last move highlight.
-            return;
         }
 
-        if (boardEl && boardEl.getAttribute('data-show-last-move') === '1') {
+        if (boardEl && boardEl.getAttribute('data-show-last-move') === '1' && !checkedKingSquare) {
             var moveMeta = boardEl.getAttribute('data-last-move-meta') || '';
             if (moveMeta.indexOf(':') !== -1) {
                 var movePart = moveMeta.split(':')[1] || '';
@@ -457,6 +573,9 @@ function initChess(gameId) {
             var targetPiece = el.getAttribute('data-piece') || '';
             if (targetPiece) {
                 el.classList.add('capture-target');
+                if (checkedKingSquare) {
+                    el.classList.add('check-capture-target');
+                }
             }
         });
     }
@@ -487,7 +606,7 @@ function initChess(gameId) {
         var from = parts[0];
         var to = parts[1];
 
-        animatePieceTravel(kind, from, to);
+        animatePieceTravel(kind, from, to, previousSnapshot || {});
 
         if (animationTimeout) {
             clearTimeout(animationTimeout);
@@ -531,36 +650,117 @@ function initChess(gameId) {
             document.querySelectorAll('.chess-square').forEach(function(el) {
                 el.classList.remove('moved', 'captured');
             });
-        }, 640);
+        }, 1560);
     }
 
-    function animatePieceTravel(kind, from, to) {
+    function moveMetaOwnColor(myColor, boardEl) {
+        if (!boardEl) return false;
+        var moveMeta = boardEl.getAttribute('data-last-move-meta') || '';
+        if (!moveMeta || moveMeta.indexOf(':') === -1) return false;
+        var move = moveMeta.split(':')[1] || '';
+        var parts = move.split('-');
+        if (parts.length !== 2) return false;
+        var to = parts[1];
+        var toEl = document.querySelector('.chess-square[data-square="' + to + '"]');
+        if (!toEl) return false;
+        var piece = toEl.getAttribute('data-piece') || '';
+        if (!piece) return false;
+        return (myColor === 'white' && piece === piece.toUpperCase()) || (myColor === 'black' && piece === piece.toLowerCase());
+    }
+
+    function pieceGlyph(piece) {
+        switch (piece) {
+            case 'K': return '♔\uFE0E';
+            case 'Q': return '♕\uFE0E';
+            case 'R': return '♖\uFE0E';
+            case 'B': return '♗\uFE0E';
+            case 'N': return '♘\uFE0E';
+            case 'P': return '♙\uFE0E';
+            case 'k': return '♚\uFE0E';
+            case 'q': return '♛\uFE0E';
+            case 'r': return '♜\uFE0E';
+            case 'b': return '♝\uFE0E';
+            case 'n': return '♞\uFE0E';
+            case 'p': return '♟\uFE0E';
+            default: return '';
+        }
+    }
+
+    function animatePieceTravel(kind, from, to, previousSnapshot) {
         var fromEl = document.querySelector('.chess-square[data-square="' + from + '"]');
         var toEl = document.querySelector('.chess-square[data-square="' + to + '"]');
         var boardShell = document.getElementById('chess-board-shell');
         if (!fromEl || !toEl || !boardShell) return;
 
-        var pieceEl = toEl.querySelector('.chess-piece');
-        if (!pieceEl || !pieceEl.textContent) return;
+        var finalToPiece = toEl.getAttribute('data-piece') || '';
+        var movingPiece = (previousSnapshot && previousSnapshot[from]) || '';
+        var fromPieceEl = fromEl.querySelector('.chess-piece');
+        var destinationPieceEl = toEl.querySelector('.chess-piece');
+        if (
+            !movingPiece &&
+            fromPieceEl &&
+            fromPieceEl.textContent &&
+            fromPieceEl.textContent.trim() &&
+            fromPieceEl.textContent.trim() !== '·'
+        ) {
+            var fromGlyph = fromPieceEl.textContent.trim();
+            if (fromGlyph === '♔' || fromGlyph === '♚') movingPiece = fromPieceEl.classList.contains('piece-black') ? 'k' : 'K';
+            else if (fromGlyph === '♕' || fromGlyph === '♛') movingPiece = fromPieceEl.classList.contains('piece-black') ? 'q' : 'Q';
+            else if (fromGlyph === '♖' || fromGlyph === '♜') movingPiece = fromPieceEl.classList.contains('piece-black') ? 'r' : 'R';
+            else if (fromGlyph === '♗' || fromGlyph === '♝') movingPiece = fromPieceEl.classList.contains('piece-black') ? 'b' : 'B';
+            else if (fromGlyph === '♘' || fromGlyph === '♞') movingPiece = fromPieceEl.classList.contains('piece-black') ? 'n' : 'N';
+            else movingPiece = fromPieceEl.classList.contains('piece-black') ? 'p' : 'P';
+        }
+        if (!movingPiece && finalToPiece) {
+            movingPiece = finalToPiece;
+        }
+        var glyph = pieceGlyph(movingPiece);
+        if (!glyph) return;
 
         boardShell.classList.add('animating');
 
+        var shellRect = boardShell.getBoundingClientRect();
         var fromRect = fromEl.getBoundingClientRect();
         var toRect = toEl.getBoundingClientRect();
+        var fromCenterX = fromRect.left - shellRect.left + fromRect.width / 2;
+        var fromCenterY = fromRect.top - shellRect.top + fromRect.height / 2;
+        var toCenterX = toRect.left - shellRect.left + toRect.width / 2;
+        var toCenterY = toRect.top - shellRect.top + toRect.height / 2;
         var piece = document.createElement('div');
         var pieceColorClass = '';
-        if (pieceEl.classList.contains('piece-white')) pieceColorClass = ' piece-white';
-        else if (pieceEl.classList.contains('piece-black')) pieceColorClass = ' piece-black';
+        if (movingPiece === movingPiece.toUpperCase()) pieceColorClass = ' piece-white';
+        else pieceColorClass = ' piece-black';
         piece.className = 'move-trail-piece' + pieceColorClass;
-        piece.textContent = pieceEl.textContent;
-        piece.style.left = (fromRect.left + fromRect.width / 2) + 'px';
-        piece.style.top = (fromRect.top + fromRect.height / 2) + 'px';
-        document.body.appendChild(piece);
+        piece.textContent = glyph;
+        piece.style.left = fromCenterX + 'px';
+        piece.style.top = fromCenterY + 'px';
+        boardShell.appendChild(piece);
 
-        requestAnimationFrame(function() {
-            piece.style.transform = 'translate(' + (toRect.left - fromRect.left) + 'px,' + (toRect.top - fromRect.top) + 'px) translate(-50%, -50%) scale(1.04)';
-            piece.style.opacity = '0.92';
+        document.querySelectorAll('.chess-piece.move-arrival-hidden').forEach(function(el) {
+            el.classList.remove('move-arrival-hidden');
+            el.style.visibility = '';
         });
+        if (destinationPieceEl) {
+            destinationPieceEl.classList.add('move-arrival-hidden');
+            destinationPieceEl.style.visibility = 'hidden';
+        }
+
+        var dx = toCenterX - fromCenterX;
+        var dy = toCenterY - fromCenterY;
+        if (piece.animate) {
+            piece.animate(
+                [
+                    { transform: 'translate(-50%, -50%)', opacity: 1 },
+                    { transform: 'translate(' + dx + 'px,' + dy + 'px) translate(-50%, -50%) scale(1.03)', opacity: 0.98 },
+                ],
+                { duration: 1400, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'forwards' },
+            );
+        } else {
+            requestAnimationFrame(function() {
+                piece.style.transform = 'translate(' + dx + 'px,' + dy + 'px) translate(-50%, -50%) scale(1.03)';
+                piece.style.opacity = '0.98';
+            });
+        }
 
         if (kind === 'capture' || kind === 'enpassant') {
             var capturedSquare = to;
@@ -585,21 +785,250 @@ function initChess(gameId) {
 
         setTimeout(function() {
             if (piece.parentNode) piece.parentNode.removeChild(piece);
-            boardShell.classList.remove('animating');
-        }, 520);
+            requestAnimationFrame(function() {
+                var restoredDestinationPieceEl = toEl.querySelector('.chess-piece');
+                if (restoredDestinationPieceEl) {
+                    restoredDestinationPieceEl.classList.remove('move-arrival-hidden');
+                    restoredDestinationPieceEl.style.visibility = '';
+                }
+                boardShell.classList.remove('animating');
+            });
+        }, 1420);
     }
 
-    function fetchLegalMoves(fromSquare) {
-        return fetch('/chess/' + gameId + '/legal-moves?from=' + encodeURIComponent(fromSquare))
-            .then(function(response) {
-                if (!response.ok) return '';
-                return response.text();
-            })
-            .then(function(text) {
-                if (!text) return [];
-                return text.split(',').filter(function(x) { return x; });
-            })
-            .catch(function() { return []; });
+    function syncTurnMetadataAfterLocalMove(from, to) {
+        var boardEl = document.querySelector('.chess-board');
+        if (!boardEl) return;
+        var currentTurn = boardEl.getAttribute('data-turn') || '';
+        if (currentTurn === 'white') boardEl.setAttribute('data-turn', 'black');
+        else if (currentTurn === 'black') boardEl.setAttribute('data-turn', 'white');
+
+        var piece = '';
+        var movedTo = document.querySelector('.chess-square[data-square="' + to + '"]');
+        if (movedTo) piece = movedTo.getAttribute('data-piece') || '';
+        var isPawn = piece && piece.toLowerCase() === 'p';
+        var fromRank = parseInt(from[1], 10);
+        var toRank = parseInt(to[1], 10);
+        if (isPawn && Math.abs(toRank - fromRank) === 2) {
+            boardEl.setAttribute('data-en-passant', from[0] + String((fromRank + toRank) / 2));
+        } else {
+            boardEl.setAttribute('data-en-passant', '');
+        }
+    }
+
+    function boardState() {
+        var boardEl = document.querySelector('.chess-board');
+        var s = {
+            board: {},
+            turn: boardEl ? (boardEl.getAttribute('data-turn') || '') : '',
+            yourColor: boardEl ? (boardEl.getAttribute('data-your-color') || '') : '',
+            enPassant: boardEl ? (boardEl.getAttribute('data-en-passant') || '') : '',
+            castleWK: boardEl ? boardEl.getAttribute('data-castle-wk') === '1' : false,
+            castleWQ: boardEl ? boardEl.getAttribute('data-castle-wq') === '1' : false,
+            castleBK: boardEl ? boardEl.getAttribute('data-castle-bk') === '1' : false,
+            castleBQ: boardEl ? boardEl.getAttribute('data-castle-bq') === '1' : false,
+        };
+        document.querySelectorAll('.chess-square').forEach(function(el) {
+            var sq = el.getAttribute('data-square');
+            if (!sq) return;
+            s.board[sq] = el.getAttribute('data-piece') || '';
+        });
+        return s;
+    }
+
+    function pieceColor(piece) {
+        if (!piece) return '';
+        return piece === piece.toUpperCase() ? 'white' : 'black';
+    }
+
+    function sq(file, rank) {
+        return String.fromCharCode('a'.charCodeAt(0) + file) + String(rank + 1);
+    }
+
+    function toCoord(square) {
+        return { file: square.charCodeAt(0) - 'a'.charCodeAt(0), rank: parseInt(square[1], 10) - 1 };
+    }
+
+    function cloneBoard(board) {
+        var out = {};
+        Object.keys(board).forEach(function(k) { out[k] = board[k]; });
+        return out;
+    }
+
+    function pathClear(board, from, to) {
+        var a = toCoord(from);
+        var b = toCoord(to);
+        var df = Math.sign(b.file - a.file);
+        var dr = Math.sign(b.rank - a.rank);
+        var f = a.file + df;
+        var r = a.rank + dr;
+        while (f !== b.file || r !== b.rank) {
+            if (board[sq(f, r)]) return false;
+            f += df;
+            r += dr;
+        }
+        return true;
+    }
+
+    function canAttack(board, piece, from, to) {
+        var a = toCoord(from);
+        var b = toCoord(to);
+        var df = b.file - a.file;
+        var dr = b.rank - a.rank;
+        var p = piece.toLowerCase();
+        if (p === 'p') {
+            var dir = piece === piece.toUpperCase() ? 1 : -1;
+            return Math.abs(df) === 1 && dr === dir;
+        }
+        if (p === 'n') return (Math.abs(df) === 1 && Math.abs(dr) === 2) || (Math.abs(df) === 2 && Math.abs(dr) === 1);
+        if (p === 'b') return Math.abs(df) === Math.abs(dr) && pathClear(board, from, to);
+        if (p === 'r') return (df === 0 || dr === 0) && pathClear(board, from, to);
+        if (p === 'q') return ((df === 0 || dr === 0) || (Math.abs(df) === Math.abs(dr))) && pathClear(board, from, to);
+        if (p === 'k') return Math.abs(df) <= 1 && Math.abs(dr) <= 1;
+        return false;
+    }
+
+    function kingSquare(board, color) {
+        var target = color === 'white' ? 'K' : 'k';
+        var keys = Object.keys(board);
+        for (var i = 0; i < keys.length; i++) {
+            if ((board[keys[i]] || '') === target) return keys[i];
+        }
+        return '';
+    }
+
+    function isSquareAttacked(board, square, byColor) {
+        var keys = Object.keys(board);
+        for (var i = 0; i < keys.length; i++) {
+            var from = keys[i];
+            var piece = board[from] || '';
+            if (!piece || pieceColor(piece) !== byColor) continue;
+            if (canAttack(board, piece, from, square)) return true;
+        }
+        return false;
+    }
+
+    function applyPseudoMove(state, from, to) {
+        var board = cloneBoard(state.board);
+        var piece = board[from];
+        var target = board[to];
+        if (!piece) return null;
+        var out = {
+            board: board,
+            enPassant: '',
+            castleWK: state.castleWK,
+            castleWQ: state.castleWQ,
+            castleBK: state.castleBK,
+            castleBQ: state.castleBQ,
+        };
+
+        var p = piece.toLowerCase();
+        if (p === 'k' && Math.abs(toCoord(to).file - toCoord(from).file) === 2) {
+            var rookFrom = '';
+            var rookTo = '';
+            if (from === 'e1' && to === 'g1') { rookFrom = 'h1'; rookTo = 'f1'; out.castleWK = false; out.castleWQ = false; }
+            else if (from === 'e1' && to === 'c1') { rookFrom = 'a1'; rookTo = 'd1'; out.castleWK = false; out.castleWQ = false; }
+            else if (from === 'e8' && to === 'g8') { rookFrom = 'h8'; rookTo = 'f8'; out.castleBK = false; out.castleBQ = false; }
+            else if (from === 'e8' && to === 'c8') { rookFrom = 'a8'; rookTo = 'd8'; out.castleBK = false; out.castleBQ = false; }
+            if (!rookFrom || !board[rookFrom]) return null;
+            delete board[from];
+            delete board[rookFrom];
+            board[to] = piece;
+            board[rookTo] = pieceColor(piece) === 'white' ? 'R' : 'r';
+            out.board = board;
+            return out;
+        }
+
+        if (p === 'p' && !target && from[0] !== to[0] && state.enPassant && state.enPassant === to) {
+            var capRank = toCoord(from).rank;
+            var capSq = to[0] + String(capRank + 1);
+            delete board[capSq];
+        }
+
+        delete board[from];
+        board[to] = piece;
+
+        var fr = from[1];
+        var tr = to[1];
+        if (p === 'p' && Math.abs(parseInt(tr, 10) - parseInt(fr, 10)) === 2) {
+            var mid = (parseInt(fr, 10) + parseInt(tr, 10)) / 2;
+            out.enPassant = from[0] + String(mid);
+        }
+
+        if (from === 'e1' || piece === 'K') { out.castleWK = false; out.castleWQ = false; }
+        if (from === 'e8' || piece === 'k') { out.castleBK = false; out.castleBQ = false; }
+        if (from === 'h1' || to === 'h1') out.castleWK = false;
+        if (from === 'a1' || to === 'a1') out.castleWQ = false;
+        if (from === 'h8' || to === 'h8') out.castleBK = false;
+        if (from === 'a8' || to === 'a8') out.castleBQ = false;
+        out.board = board;
+        return out;
+    }
+
+    function pseudoLegal(state, from, to) {
+        if (from === to) return false;
+        var piece = state.board[from] || '';
+        if (!piece) return false;
+        if (pieceColor(piece) !== state.yourColor) return false;
+        if (state.yourColor !== state.turn) return false;
+        var target = state.board[to] || '';
+        if (target && pieceColor(target) === state.yourColor) return false;
+
+        var a = toCoord(from);
+        var b = toCoord(to);
+        var df = b.file - a.file;
+        var dr = b.rank - a.rank;
+        var p = piece.toLowerCase();
+
+        if (p === 'p') {
+            var dir = state.yourColor === 'white' ? 1 : -1;
+            var startRank = state.yourColor === 'white' ? 1 : 6;
+            if (df === 0 && dr === dir && !target) return true;
+            if (df === 0 && dr === 2 * dir && a.rank === startRank && !target) {
+                var midSq = sq(a.file, a.rank + dir);
+                return !state.board[midSq];
+            }
+            if (Math.abs(df) === 1 && dr === dir) {
+                if (target) return true;
+                return state.enPassant && state.enPassant === to;
+            }
+            return false;
+        }
+        if (p === 'n') return (Math.abs(df) === 1 && Math.abs(dr) === 2) || (Math.abs(df) === 2 && Math.abs(dr) === 1);
+        if (p === 'b') return Math.abs(df) === Math.abs(dr) && pathClear(state.board, from, to);
+        if (p === 'r') return (df === 0 || dr === 0) && pathClear(state.board, from, to);
+        if (p === 'q') return ((df === 0 || dr === 0) || (Math.abs(df) === Math.abs(dr))) && pathClear(state.board, from, to);
+        if (p === 'k') {
+            if (Math.abs(df) <= 1 && Math.abs(dr) <= 1) return true;
+            if (dr === 0 && Math.abs(df) === 2) {
+                if (state.yourColor === 'white' && from === 'e1' && to === 'g1') return state.castleWK && !state.board['f1'] && !state.board['g1'];
+                if (state.yourColor === 'white' && from === 'e1' && to === 'c1') return state.castleWQ && !state.board['d1'] && !state.board['c1'] && !state.board['b1'];
+                if (state.yourColor === 'black' && from === 'e8' && to === 'g8') return state.castleBK && !state.board['f8'] && !state.board['g8'];
+                if (state.yourColor === 'black' && from === 'e8' && to === 'c8') return state.castleBQ && !state.board['d8'] && !state.board['c8'] && !state.board['b8'];
+            }
+            return false;
+        }
+        return false;
+    }
+
+    function localLegalMoves(fromSquare) {
+        var state = boardState();
+        if (!state || state.yourColor === 'spectator') return [];
+        var out = [];
+        for (var f = 0; f < 8; f++) {
+            for (var r = 0; r < 8; r++) {
+                var to = sq(f, r);
+                if (!pseudoLegal(state, fromSquare, to)) continue;
+                var next = applyPseudoMove(state, fromSquare, to);
+                if (!next) continue;
+                var myKing = kingSquare(next.board, state.yourColor);
+                if (!myKing) continue;
+                var opp = state.yourColor === 'white' ? 'black' : 'white';
+                if (isSquareAttacked(next.board, myKing, opp)) continue;
+                out.push(to);
+            }
+        }
+        return out;
     }
 
     function bindBoardInteractions() {
@@ -607,59 +1036,45 @@ function initChess(gameId) {
         var toInput = document.getElementById('chess-to');
         if (!fromInput || !toInput) return;
 
+        function setSelectedSquare(square) {
+            selectedFrom = square;
+            toInput.value = '';
+            legalTargets = [];
+            legalTargetSet = {};
+            if (selectedFrom) {
+                legalTargets = localLegalMoves(selectedFrom);
+                legalTargets.forEach(function(move) { legalTargetSet[move] = true; });
+            }
+            applyHighlights();
+            updateMoveUI();
+        }
+
+        function isOwnPiece(piece) {
+            if (!piece) return false;
+            var boardEl = document.querySelector('.chess-board');
+            if (!boardEl) return false;
+            var yourColor = boardEl.getAttribute('data-your-color') || '';
+            if (yourColor === 'white') return piece === piece.toUpperCase();
+            if (yourColor === 'black') return piece === piece.toLowerCase();
+            return false;
+        }
+
         function activateSquare(square, currentPiece) {
             if (!selectedFrom) {
-                if (!currentPiece()) return;
-                selectedFrom = square;
-                toInput.value = '';
-                legalTargets = [];
-                legalTargetSet = {};
-                applyHighlights();
-                updateMoveUI();
-                fetchLegalMoves(selectedFrom).then(function(moves) {
-                    legalTargets = moves;
-                    legalTargetSet = {};
-                    moves.forEach(function(move) { legalTargetSet[move] = true; });
-                    applyHighlights();
-                    updateMoveUI();
-                });
+                var startPiece = currentPiece();
+                if (!startPiece || !isOwnPiece(startPiece)) return;
+                setSelectedSquare(square);
                 return;
             }
 
             if (square === selectedFrom) {
-                selectedFrom = null;
-                legalTargets = [];
-                legalTargetSet = {};
-                toInput.value = '';
-                applyHighlights();
-                updateMoveUI();
+                setSelectedSquare(null);
                 return;
             }
 
-            if (!legalTargetSet[square]) {
-                if (currentPiece()) {
-                    selectedFrom = square;
-                    toInput.value = '';
-                    legalTargets = [];
-                    legalTargetSet = {};
-                    applyHighlights();
-                    updateMoveUI();
-                    fetchLegalMoves(selectedFrom).then(function(moves) {
-                        legalTargets = moves;
-                        legalTargetSet = {};
-                        moves.forEach(function(move) { legalTargetSet[move] = true; });
-                        applyHighlights();
-                        updateMoveUI();
-                    });
-                } else if (selectedFrom) {
-                    // Mobile race safety: allow optimistic submit while highlights are still loading.
-                    toInput.value = square;
-                    applyHighlights();
-                    updateMoveUI();
-                    submitMove(selectedFrom, square);
-                    hideCoachmark();
-                    localStorage.setItem('chess_hint_seen', '1');
-                }
+            var pieceAtSquare = currentPiece();
+            if (pieceAtSquare && isOwnPiece(pieceAtSquare)) {
+                setSelectedSquare(square);
                 return;
             }
 
@@ -690,20 +1105,12 @@ function initChess(gameId) {
 
             squareEl.addEventListener('dragstart', function(ev) {
                 var pieceEl = squareEl.querySelector('.chess-piece');
-                if (!currentPiece()) {
+                if (!currentPiece() || !isOwnPiece(currentPiece())) {
                     ev.preventDefault();
                     return;
                 }
                 draggingFrom = square;
-                selectedFrom = square;
-                toInput.value = '';
-                fetchLegalMoves(selectedFrom).then(function(moves) {
-                    legalTargets = moves;
-                    legalTargetSet = {};
-                    moves.forEach(function(move) { legalTargetSet[move] = true; });
-                    applyHighlights();
-                    updateMoveUI();
-                });
+                setSelectedSquare(square);
                 ev.dataTransfer.setData('text/plain', square);
                 ev.dataTransfer.effectAllowed = 'move';
                 if (pieceEl) {
@@ -716,14 +1123,14 @@ function initChess(gameId) {
 
             squareEl.addEventListener('dragover', function(ev) {
                 if (!draggingFrom) return;
-                if (legalTargetSet[square]) {
+                if (square !== draggingFrom) {
                     ev.preventDefault();
                     ev.dataTransfer.dropEffect = 'move';
                 }
             });
 
             squareEl.addEventListener('dragenter', function(ev) {
-                if (!draggingFrom || !legalTargetSet[square]) return;
+                if (!draggingFrom || square === draggingFrom) return;
                 ev.preventDefault();
                 squareEl.classList.add('drag-hover');
             });
@@ -735,11 +1142,12 @@ function initChess(gameId) {
             squareEl.addEventListener('drop', function(ev) {
                 if (!draggingFrom) return;
                 ev.preventDefault();
-                if (!legalTargetSet[square]) return;
+                if (square === draggingFrom) return;
+                if (isOwnPiece(currentPiece())) return;
                 toInput.value = square;
                 applyHighlights();
                 updateMoveUI();
-                submitMove(selectedFrom, square);
+                submitMove(selectedFrom || draggingFrom, square);
                 squareEl.classList.remove('drag-hover');
                 hideCoachmark();
                 localStorage.setItem('chess_hint_seen', '1');
@@ -766,7 +1174,7 @@ function initChess(gameId) {
                     lastTouchHandledAt = Date.now();
                     lastTouchHandledSquare = square;
                     touchHandledOnStart = true;
-                } else if (selectedFrom && selectedFrom !== square && !currentPiece()) {
+                } else if (selectedFrom && selectedFrom !== square && !isOwnPiece(currentPiece())) {
                     toInput.value = square;
                     applyHighlights();
                     updateMoveUI();
@@ -819,14 +1227,18 @@ function initChess(gameId) {
                 var targetSquare = targetSquareEl ? targetSquareEl.getAttribute('data-square') : null;
 
                 if (touchFrom && targetSquare && targetSquare !== touchFrom) {
-                    toInput.value = targetSquare;
-                    applyHighlights();
-                    updateMoveUI();
-                    submitMove(touchFrom, targetSquare);
-                    lastTouchHandledAt = Date.now();
-                    lastTouchHandledSquare = targetSquare;
-                    hideCoachmark();
-                    localStorage.setItem('chess_hint_seen', '1');
+                    var sourceSquare = selectedFrom || touchFrom;
+                    var targetPiece = targetSquareEl ? (targetSquareEl.getAttribute('data-piece') || '') : '';
+                    if (sourceSquare && !isOwnPiece(targetPiece)) {
+                        toInput.value = targetSquare;
+                        applyHighlights();
+                        updateMoveUI();
+                        submitMove(sourceSquare, targetSquare);
+                        lastTouchHandledAt = Date.now();
+                        lastTouchHandledSquare = targetSquare;
+                        hideCoachmark();
+                        localStorage.setItem('chess_hint_seen', '1');
+                    }
                 }
 
                 touchFrom = null;
@@ -852,7 +1264,7 @@ function initChess(gameId) {
                     lastTouchHandledAt = Date.now();
                     lastTouchHandledSquare = square;
                     touchHandledOnStart = true;
-                } else if (selectedFrom && selectedFrom !== square && !currentPiece()) {
+                } else if (selectedFrom && selectedFrom !== square && !isOwnPiece(currentPiece())) {
                     toInput.value = square;
                     applyHighlights();
                     updateMoveUI();
@@ -903,14 +1315,18 @@ function initChess(gameId) {
                 var targetSquare = targetSquareEl ? targetSquareEl.getAttribute('data-square') : null;
 
                 if (touchFrom && targetSquare && targetSquare !== touchFrom) {
-                    toInput.value = targetSquare;
-                    applyHighlights();
-                    updateMoveUI();
-                    submitMove(touchFrom, targetSquare);
-                    lastTouchHandledAt = Date.now();
-                    lastTouchHandledSquare = targetSquare;
-                    hideCoachmark();
-                    localStorage.setItem('chess_hint_seen', '1');
+                    var sourceSquare = selectedFrom || touchFrom;
+                    var pointerTargetPiece = targetSquareEl ? (targetSquareEl.getAttribute('data-piece') || '') : '';
+                    if (sourceSquare && !isOwnPiece(pointerTargetPiece)) {
+                        toInput.value = targetSquare;
+                        applyHighlights();
+                        updateMoveUI();
+                        submitMove(sourceSquare, targetSquare);
+                        lastTouchHandledAt = Date.now();
+                        lastTouchHandledSquare = targetSquare;
+                        hideCoachmark();
+                        localStorage.setItem('chess_hint_seen', '1');
+                    }
                 }
 
                 touchFrom = null;
@@ -948,9 +1364,15 @@ function initChess(gameId) {
     connect();
     startCountdowns();
     bindShareButton();
+    bindSoundButton();
     bindQrButton();
     bindBoardInteractions();
     boardSnapshot = captureBoardSnapshot();
+    var initialBoard = document.querySelector('.chess-board');
+    if (initialBoard) {
+        previousTurnColor = initialBoard.getAttribute('data-turn') || '';
+    }
+    document.addEventListener('pointerdown', unlockAudio, { once: true, passive: true });
 
     window.addEventListener('beforeunload', function() {
         if (countdownInterval) clearInterval(countdownInterval);

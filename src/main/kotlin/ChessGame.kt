@@ -19,9 +19,16 @@ enum class ChessColor {
     BLACK,
 }
 
+enum class MoveError {
+    NOT_YOUR_TURN,
+    INVALID_MOVE,
+    OK,
+}
+
 class ChessGame(
     val id: String = UUID.randomUUID().toString().substring(0, 8),
     creatorSessionId: String,
+    private val randomColorAssignment: Boolean = true,
 ) {
     val createdAt: Long = System.currentTimeMillis()
 
@@ -59,6 +66,14 @@ class ChessGame(
         private set
 
     @Volatile
+    var whiteSessionId: String? = null
+        private set
+
+    @Volatile
+    var blackSessionId: String? = null
+        private set
+
+    @Volatile
     private var enPassantTargetSquare: String? = null
 
     @Volatile
@@ -68,6 +83,7 @@ class ChessGame(
     private val rookMoved = ConcurrentHashMap<String, Boolean>()
 
     private val board = ConcurrentHashMap<String, Char>()
+    private var nextRoundForcedPlayers: List<String>? = null
 
     init {
         resetBoard()
@@ -84,6 +100,22 @@ class ChessGame(
     fun pieceAt(square: String): Char? = board[square.lowercase()]
 
     fun boardSnapshot(): Map<String, Char> = board.toMap()
+
+    fun enPassantTarget(): String? = enPassantTargetSquare
+
+    fun isCastleAvailable(
+        color: ChessColor,
+        kingSide: Boolean,
+    ): Boolean {
+        val key =
+            when {
+                color == ChessColor.WHITE && kingSide -> "h1"
+                color == ChessColor.WHITE && !kingSide -> "a1"
+                color == ChessColor.BLACK && kingSide -> "h8"
+                else -> "a8"
+            }
+        return kingMoved[color] != true && rookMoved[key] != true
+    }
 
     fun touch() {
         lastActivityAt = System.currentTimeMillis()
@@ -110,7 +142,15 @@ class ChessGame(
         playerOrder.add(sessionId)
 
         if (shouldPlay) {
-            colorAssignments[sessionId] = if (colorAssignments.values.contains(ChessColor.WHITE)) ChessColor.BLACK else ChessColor.WHITE
+            if (!randomColorAssignment) {
+                colorAssignments[sessionId] = if (colorAssignments.values.contains(ChessColor.WHITE)) ChessColor.BLACK else ChessColor.WHITE
+            } else {
+                colorAssignments[sessionId] = ChessColor.WHITE
+                if (colorAssignments.size == 2) {
+                    randomizeColorsForActivePlayers()
+                }
+            }
+            updateColorAssignmentCache()
         }
 
         maybeStartGame()
@@ -161,6 +201,12 @@ class ChessGame(
                 winnerSessionId = winner
                 endReason = "disconnect"
                 phase = ChessPhase.GAME_OVER
+                if (promoteLongestConnectedSpectatorAgainst(winner)) {
+                    phase = ChessPhase.IN_PROGRESS
+                    turn = ChessColor.WHITE
+                    winnerSessionId = null
+                    endReason = null
+                }
                 changed = true
             }
         }
@@ -255,8 +301,24 @@ class ChessGame(
     }
 
     @Synchronized
+    fun validateMoveError(
+        sessionId: String,
+        from: String,
+        to: String,
+    ): MoveError {
+        if (phase != ChessPhase.IN_PROGRESS) return MoveError.INVALID_MOVE
+        val movingColor = colorAssignments[sessionId] ?: return MoveError.INVALID_MOVE
+        if (movingColor != turn) return MoveError.NOT_YOUR_TURN
+        return if (isMoveLegalForValidation(sessionId, from, to)) MoveError.OK else MoveError.INVALID_MOVE
+    }
+
+    @Synchronized
     fun resetForNewGame(): Boolean {
         touch()
+        if (phase == ChessPhase.GAME_OVER) {
+            rotateAfterGameOverIfNeeded()
+        }
+        phase = ChessPhase.WAITING_FOR_PLAYERS
         resetBoard()
         turn = ChessColor.WHITE
         winnerSessionId = null
@@ -265,9 +327,32 @@ class ChessGame(
 
         colorAssignments.clear()
 
-        val connected = allPlayers.filter { it.connected }.shuffled(Random.Default)
-        connected.take(2).forEachIndexed { index, player ->
-            colorAssignments[player.sessionId] = if (index == 0) ChessColor.WHITE else ChessColor.BLACK
+        val connected = allPlayers.filter { it.connected && players.containsKey(it.sessionId) }
+        val forced = nextRoundForcedPlayers?.mapNotNull { id -> connected.firstOrNull { it.sessionId == id } }
+        nextRoundForcedPlayers = null
+        val previouslyActive = connected.filter { it.marbles > 0 }
+        val pair =
+            if (forced != null && forced.size >= 2) {
+                forced.take(2)
+            } else if (previouslyActive.size >= 2) {
+                previouslyActive.take(2)
+            } else {
+                connected.take(2)
+            }
+        if (pair.isNotEmpty()) {
+            if (randomColorAssignment) {
+                pair.forEach { player ->
+                    colorAssignments[player.sessionId] = ChessColor.WHITE
+                }
+                if (colorAssignments.size == 2) {
+                    randomizeColorsForActivePlayers()
+                }
+            } else {
+                colorAssignments[pair[0].sessionId] = ChessColor.WHITE
+                if (pair.size > 1) {
+                    colorAssignments[pair[1].sessionId] = ChessColor.BLACK
+                }
+            }
         }
 
         allPlayers.forEach { player ->
@@ -335,6 +420,16 @@ class ChessGame(
     }
 
     @Synchronized
+    internal fun forceGameOverForTesting(
+        winnerSessionId: String?,
+        reason: String,
+    ) {
+        this.phase = ChessPhase.GAME_OVER
+        this.winnerSessionId = winnerSessionId
+        this.endReason = reason
+    }
+
+    @Synchronized
     fun legalMovesFor(
         sessionId: String,
         from: String,
@@ -365,6 +460,8 @@ class ChessGame(
     private fun maybeStartGame() {
         if (phase == ChessPhase.GAME_OVER) return
 
+        updateColorAssignmentCache()
+
         phase = if (colorAssignments.size >= 2) ChessPhase.IN_PROGRESS else ChessPhase.WAITING_FOR_PLAYERS
     }
 
@@ -372,7 +469,68 @@ class ChessGame(
         val existed = players.remove(sessionId) != null
         playerOrder.remove(sessionId)
         colorAssignments.remove(sessionId)
+        updateColorAssignmentCache()
         return existed
+    }
+
+    private fun updateColorAssignmentCache() {
+        whiteSessionId = colorAssignments.entries.firstOrNull { it.value == ChessColor.WHITE }?.key
+        blackSessionId = colorAssignments.entries.firstOrNull { it.value == ChessColor.BLACK }?.key
+    }
+
+    private fun randomizeColorsForActivePlayers() {
+        val activeSessions = colorAssignments.keys.toList()
+        if (activeSessions.size < 2) {
+            updateColorAssignmentCache()
+            return
+        }
+        val shuffled = activeSessions.shuffled(Random.Default)
+        colorAssignments.clear()
+        colorAssignments[shuffled[0]] = ChessColor.WHITE
+        colorAssignments[shuffled[1]] = ChessColor.BLACK
+        updateColorAssignmentCache()
+    }
+
+    private fun longestConnectedSpectatorSessionId(): String? =
+        allPlayers
+            .filter { it.connected }
+            .filter { colorAssignments[it.sessionId] == null }
+            .sortedWith(
+                compareBy<Player> { it.connectedSinceAt ?: Long.MAX_VALUE }
+                    .thenBy { playerOrder.indexOf(it.sessionId).takeIf { idx -> idx >= 0 } ?: Int.MAX_VALUE },
+            ).firstOrNull()
+            ?.sessionId
+
+    private fun promoteLongestConnectedSpectatorAgainst(keepSessionId: String): Boolean {
+        val spectator = longestConnectedSpectatorSessionId() ?: return false
+        if (players[keepSessionId]?.connected != true || players[spectator] == null) return false
+
+        resetBoard()
+        turn = ChessColor.WHITE
+        winnerSessionId = null
+        endReason = null
+        lastMove = null
+        lastMoveMeta = null
+        colorAssignments.clear()
+        colorAssignments[keepSessionId] = ChessColor.WHITE
+        colorAssignments[spectator] = ChessColor.BLACK
+        players.values.forEach { p -> p.marbles = if (colorAssignments.containsKey(p.sessionId)) 1 else 0 }
+        updateColorAssignmentCache()
+        return true
+    }
+
+    private fun rotateAfterGameOverIfNeeded() {
+        val loserSessionId =
+            winnerSessionId
+                ?.let { winner -> colorAssignments.keys.firstOrNull { it != winner } }
+                ?: return
+        if (players[loserSessionId] == null) return
+
+        val spectator = longestConnectedSpectatorSessionId() ?: return
+        if (spectator == loserSessionId) return
+
+        val winner = winnerSessionId ?: return
+        nextRoundForcedPlayers = listOf(winner, spectator)
     }
 
     private data class MoveSnapshot(

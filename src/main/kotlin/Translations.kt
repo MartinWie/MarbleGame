@@ -17,6 +17,8 @@ object Translations {
                     "game.title" to "Marble Game",
                     "button.share" to "Share",
                     "button.qr" to "QR",
+                    "button.sound.on" to "Sound On",
+                    "button.sound.off" to "Sound Off",
                     "button.copied" to "Copied!",
                     "share.text" to "Join my game!",
                     // Home page
@@ -117,6 +119,7 @@ object Translations {
                     "chess.select.from" to "Select piece",
                     "chess.select.to" to "Select target",
                     "chess.move.invalid" to "That move is not allowed.",
+                    "chess.move.notYourTurn" to "It is not your turn.",
                     "chess.move.network" to "Move could not be sent. Check your connection.",
                     "chess.hint.overlay" to "Tap piece, then target. Or drag.",
                     "chess.move.button" to "Move",
@@ -194,6 +197,8 @@ object Translations {
                     "game.title" to "Murmelspiel",
                     "button.share" to "Teilen",
                     "button.qr" to "QR",
+                    "button.sound.on" to "Sound an",
+                    "button.sound.off" to "Sound aus",
                     "button.copied" to "Kopiert!",
                     "share.text" to "Spiel mit mir!",
                     // Home page
@@ -294,6 +299,7 @@ object Translations {
                     "chess.select.from" to "Figur wählen",
                     "chess.select.to" to "Zielfeld wählen",
                     "chess.move.invalid" to "Dieser Zug ist nicht erlaubt.",
+                    "chess.move.notYourTurn" to "Du bist gerade nicht am Zug.",
                     "chess.move.network" to "Zug konnte nicht gesendet werden. Verbindung prufen.",
                     "chess.hint.overlay" to "Figur antippen, dann Zielfeld. Oder ziehen.",
                     "chess.move.button" to "Ziehen",

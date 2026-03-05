@@ -348,7 +348,7 @@ test.describe('Error Handling', () => {
       await createGame(player1.page, 'TestPlayer');
       
       // Verify share button exists
-      await expect(player1.page.locator('button:has-text("Share")')).toBeVisible();
+      await expect(player1.page.locator('#share-btn')).toBeVisible();
     } finally {
       await player1.context.close();
     }
