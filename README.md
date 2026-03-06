@@ -204,6 +204,16 @@ e2e/                  # Playwright E2E tests
 - Each player has a dedicated SSE channel for broadcasting
 - Connection grace period (15s) handles brief disconnects
 
+### TODO
+
+- mögliche züge dezenter(nur punkte instead of frames) kill or threat can stay as is
+- Pfeile(zeichnen) mit rechtsclick(mögliche züge abhängig vom piece)
+- auf zeit spielen option, 
+- felder bezeichnungen einblenden A1, etc, 
+- option to replay the moves (züge zurück gehen!)(not really go back, but to have the option to see how the board looked like x steps back)
+- Checkbox für streamer mode(host bleibt immer drin und spectator wechseln durch)
+- analyse gegen schachengine?
+
 ### TODO - Road to 100x Capacity
 
 Target: scale from current single-instance setup to roughly 100x more concurrent games (with spectators) in both Marble and Chess modes, while keeping move latency and reconnect behavior stable.

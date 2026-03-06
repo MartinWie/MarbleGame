@@ -803,7 +803,7 @@ input::placeholder {
 }
 
 .chess-square.legal-target {
-    box-shadow: inset 0 0 0 4px rgba(0, 255, 136, 0.98), 0 0 0 2px rgba(0, 0, 0, 0.45);
+    box-shadow: none;
 }
 
 .chess-square.drag-hover {
@@ -813,11 +813,11 @@ input::placeholder {
 .chess-square.legal-target::after {
     content: "";
     position: absolute;
-    width: 26%;
-    height: 26%;
+    width: 20%;
+    height: 20%;
     border-radius: 999px;
-    background: rgba(0, 255, 136, 0.72);
-    box-shadow: 0 0 14px rgba(0, 255, 136, 0.75);
+    background: rgba(0, 255, 136, 0.58);
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.52);
 }
 
 .chess-square.capture-target::after {
