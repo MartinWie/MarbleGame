@@ -122,6 +122,22 @@ test.describe('Game Creation', () => {
     await expect(page).toHaveURL(/\/chess\/[a-f0-9]{8}/);
     await expect(page.locator('h1')).toContainText('Chess Game');
   });
+
+  test('clock minutes input only shows when timed toggle is active', async ({ page }) => {
+    await page.goto('/');
+
+    await modeCard(page).locator('.mode-tile[data-mode="chess"]').click();
+    const timedToggle = chessForm(page).locator('label.option-checkbox').first();
+    const minutesWrap = chessForm(page).locator('#timed-config-wrap');
+
+    await expect(minutesWrap).toHaveClass(/hidden/);
+
+    await timedToggle.click();
+    await expect(minutesWrap).not.toHaveClass(/hidden/);
+
+    await timedToggle.click();
+    await expect(minutesWrap).toHaveClass(/hidden/);
+  });
 });
 
 test.describe('Chess Joining', () => {
@@ -324,6 +340,14 @@ test.describe('Chess Joining', () => {
       await expect.poll(async () => (await whitePage.locator('.hint').first().textContent())?.toLowerCase()).toContain('checkmate');
       await expect(blackPage.locator('.winner-text')).toContainText(blackWinnerName);
       await expect(whitePage.locator('.winner-text')).toContainText(blackWinnerName);
+      await expect(whitePage.locator('.auto-restart-line')).toBeVisible();
+
+      await expect.poll(async () => {
+        return whitePage.locator('.auto-restart-line').count();
+      }, { timeout: 20000 }).toBe(0);
+
+      await expect(whitePage.locator('.winner-text')).toHaveCount(0);
+      await expect(blackPage.locator('.winner-text')).toHaveCount(0);
     } finally {
       await p1Context.close();
       await p2Context.close();

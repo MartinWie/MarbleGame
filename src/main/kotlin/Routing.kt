@@ -147,7 +147,11 @@ fun Application.configureRouting() {
                                 }
                                 div("option-row") {
                                     label("option-checkbox") {
-                                        input(type = InputType.checkBox, name = "timedMode") { id = "timed-mode" }
+                                        input(type = InputType.checkBox, name = "timedMode") {
+                                            id = "timed-mode"
+                                            attributes["onchange"] =
+                                                "document.getElementById('timed-config-wrap').classList.toggle('hidden', !this.checked);"
+                                        }
                                         span("option-slider") {}
                                         span("option-copy") {
                                             span("option-title") { +"home.chess.option.timed".t(lang) }
@@ -157,7 +161,7 @@ fun Application.configureRouting() {
                                 }
                                 div {
                                     id = "timed-config-wrap"
-                                    classes = setOf("option-row", "timed-config")
+                                    classes = setOf("option-row", "timed-config", "hidden")
                                     label {
                                         htmlFor = "clock-minutes"
                                         +"home.chess.option.clockMinutes".t(lang)

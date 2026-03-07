@@ -225,7 +225,9 @@ fun renderChessState(
                         if (!game.streamerModeEnabled) {
                             val sec = game.autoRestartSecondsRemaining()
                             if (sec > 0) {
-                                p("hint auto-restart-line") { +"chess.autoRestart".t(lang, sec) }
+                                p("hint auto-restart-line") {
+                                    +"chess.autoRestart".t(lang, sec)
+                                }
                             }
                         } else if (isCreator) {
                             button(classes = "btn btn-primary") {

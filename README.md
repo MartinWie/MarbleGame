@@ -229,6 +229,8 @@ Target: scale from current single-instance setup to roughly 100x more concurrent
 - [ ] Tune OS and runtime for high connection counts (file descriptors, TCP keepalive, JVM memory limits)
 - [ ] Add production dashboards + alerts (connections, queue depth, dropped updates, latency percentiles)
 
+See detailed migration plan: [docs/websocket-migration-plan.md](docs/websocket-migration-plan.md)
+
 ## Network
 
 The server runs on port `8080` by default. To play with others on the same network, find your local IP (e.g., `192.168.x.x`) and share `http://<your-ip>:8080`.

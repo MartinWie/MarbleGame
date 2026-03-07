@@ -223,7 +223,7 @@ function initGame(gameId) {
 
     function bindTimedModeToggle() {
         var timedCheckbox = document.getElementById('timed-mode');
-        var timedConfig = document.querySelector('.timed-config');
+        var timedConfig = document.getElementById('timed-config-wrap') || document.querySelector('.timed-config');
         if (!timedCheckbox || !timedConfig || timedCheckbox.dataset.timedBound === '1') return;
         timedCheckbox.dataset.timedBound = '1';
 

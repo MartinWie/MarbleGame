@@ -372,6 +372,22 @@ a:hover {
     transition: max-height 180ms ease, opacity 150ms ease, transform 180ms ease, margin-top 180ms ease;
 }
 
+#timed-config-wrap {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+    transform: translateY(-4px);
+    pointer-events: none;
+}
+
+#timed-config-wrap:not(.hidden) {
+    max-height: 80px;
+    opacity: 1;
+    margin-top: 6px;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
 .timed-config label {
     display: block;
     margin-bottom: 6px;

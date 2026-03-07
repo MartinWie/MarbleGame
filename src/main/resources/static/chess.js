@@ -267,7 +267,6 @@ function initChess(gameId) {
         }
         autoRestartInterval = setInterval(function() {
             var line = document.querySelector('.auto-restart-line');
-            if (!line) return;
             fetch('/chess/' + gameId + '/check-auto-restart', { method: 'POST' }).catch(function() {});
         }, 1000);
     }
