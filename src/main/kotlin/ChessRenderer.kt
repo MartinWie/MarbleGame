@@ -431,6 +431,8 @@ private fun FlowContent.renderBoard(
     val files = "abcdefgh"
     val fileOrder = if (perspective == ChessColor.WHITE) files.toList() else files.reversed().toList()
     val rankOrder = if (perspective == ChessColor.WHITE) (8 downTo 1).toList() else (1..8).toList()
+    val leftEdgeFile = fileOrder.firstOrNull()
+    val bottomEdgeRank = rankOrder.lastOrNull()
 
     div("chess-board-shell") {
         id = "chess-board-shell"
@@ -468,6 +470,12 @@ private fun FlowContent.renderBoard(
                         attributes["data-rank"] = rank.toString()
                         attributes["draggable"] = if (piece != null) "true" else "false"
                         attributes["data-piece"] = piece?.toString() ?: ""
+                        if (file == leftEdgeFile) {
+                            span("square-label rank-label") { +rank.toString() }
+                        }
+                        if (rank == bottomEdgeRank) {
+                            span("square-label file-label") { +file.uppercaseChar().toString() }
+                        }
                         val pieceClass =
                             when {
                                 piece == null -> "chess-piece"

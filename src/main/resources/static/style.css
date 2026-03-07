@@ -1087,6 +1087,34 @@ input::placeholder {
     position: relative;
 }
 
+.square-label {
+    position: absolute;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: clamp(0.56rem, 1.45vw, 0.72rem);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1;
+    opacity: 0.72;
+    pointer-events: none;
+    user-select: none;
+    z-index: 1;
+}
+
+.rank-label {
+    left: 5px;
+    top: 4px;
+}
+
+.file-label {
+    right: 5px;
+    bottom: 4px;
+}
+
+.chess-square .square-label {
+    color: rgba(236, 246, 255, 0.8);
+    text-shadow: 0 0 1px rgba(8, 16, 28, 0.5), 0 0 2px rgba(8, 16, 28, 0.25);
+}
+
 .chess-square:hover {
     transform: scale(1.01);
 }
@@ -1211,6 +1239,8 @@ input::placeholder {
     user-select: none;
     filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
     transition: transform 0.14s ease, opacity 0.18s ease;
+    position: relative;
+    z-index: 2;
 }
 
 .move-trail-piece {
@@ -1388,6 +1418,20 @@ input::placeholder {
 
     .chess-square {
         font-size: clamp(2rem, 6.8vw, 3.3rem);
+    }
+
+    .square-label {
+        font-size: clamp(0.62rem, 1.95vw, 0.8rem);
+    }
+
+    .rank-label {
+        left: 4px;
+        top: 3px;
+    }
+
+    .file-label {
+        right: 4px;
+        bottom: 3px;
     }
 
     .move-trail-piece {

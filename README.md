@@ -216,7 +216,6 @@ e2e/                  # Playwright E2E tests
 ### TODO
 
 - Pfeile(zeichnen) mit rechtsclick auf feld und dann auf anderem feld los lassen zum einzeichnen(nur relevant für desktop)(like normal chess plattforms)
-- felder bezeichnungen einblenden A1, etc, 
 - option to replay the moves (züge zurück gehen!)(not really go back, but to have the option to see how the board looked like x steps back)
 - Setup posthog feedback or a own small feedback table with option on the page 
 - Start with redis setup to avoid loosing game state on server restart
