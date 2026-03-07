@@ -77,6 +77,7 @@ class ChessGameTest {
         assertTrue(changed)
         assertEquals(ChessPhase.GAME_OVER, game.phase)
         assertEquals("p1", game.winnerSessionId)
+        assertTrue(game.autoRestartSecondsRemaining() > 0)
     }
 
     @Test
@@ -154,6 +155,7 @@ class ChessGameTest {
         assertEquals(ChessPhase.GAME_OVER, game.phase)
         assertEquals("timeout", game.endReason)
         assertEquals("p2", game.winnerSessionId)
+        assertTrue(game.autoRestartSecondsRemaining() > 0)
     }
 
     @Test

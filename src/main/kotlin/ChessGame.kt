@@ -235,6 +235,8 @@ class ChessGame(
                     clockStarted = false
                     winnerSessionId = null
                     endReason = null
+                } else {
+                    scheduleAutoRestart(10)
                 }
                 changed = true
             }
@@ -429,7 +431,7 @@ class ChessGame(
         phase = ChessPhase.GAME_OVER
         turnStartedAt = null
         clockStarted = false
-        autoRestartAt = null
+        scheduleAutoRestart(10)
         return true
     }
 
