@@ -42,6 +42,18 @@ class GameTest {
     }
 
     @Test
+    fun `player names are truncated to max length`() {
+        val game = Game(creatorSessionId = "creator")
+        val longName = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+        game.addPlayer("session1", longName)
+        game.addPendingPlayer("session2", longName)
+
+        assertEquals(MAX_PLAYER_NAME_LENGTH, game.players["session1"]?.name?.length)
+        assertEquals(MAX_PLAYER_NAME_LENGTH, game.players["session2"]?.name?.length)
+    }
+
+    @Test
     fun `adding same player twice updates name but doesn't duplicate`() {
         val game = Game(creatorSessionId = "creator")
 
@@ -117,6 +129,55 @@ class GameTest {
         // (the exact player depends on the seed, but we verify the mechanism works)
         assertNotNull(game.currentPlayer)
         assertTrue(game.currentPlayer?.name in listOf("Alice", "Bob", "Charlie"))
+    }
+
+    @Test
+    fun `player outbound queue coalesces latest non terminal states and preserves terminal`() {
+        val player = Player(sessionId = "s1", name = "Alice")
+
+        player.enqueueState("state-1", terminal = false, version = 1)
+        player.enqueueState("state-2", terminal = false, version = 2)
+        player.enqueueState("state-3", terminal = false, version = 3)
+
+        assertEquals(PlayerOutboundSignal.Flush, player.channel.tryReceive().getOrNull())
+        assertEquals("state-3", player.pollPendingStateHtml())
+        assertNull(player.pollPendingStateHtml())
+
+        player.enqueueState("state-4", terminal = false, version = 4)
+        player.enqueueState("terminal-state", terminal = true, version = 5)
+
+        assertEquals(PlayerOutboundSignal.Flush, player.channel.tryReceive().getOrNull())
+        assertEquals("terminal-state", player.pollPendingStateHtml())
+        assertNull(player.pollPendingStateHtml())
+
+        player.enqueueState("terminal-state-2", terminal = true, version = 6)
+        player.enqueueState("state-after-terminal", terminal = false, version = 7)
+
+        assertEquals(PlayerOutboundSignal.Flush, player.channel.tryReceive().getOrNull())
+        assertEquals("terminal-state-2", player.pollPendingStateHtml())
+        assertNull(player.pollPendingStateHtml())
+
+        player.enqueueState("newer", terminal = false, version = 10)
+        player.enqueueState("older", terminal = false, version = 9)
+
+        assertEquals(PlayerOutboundSignal.Flush, player.channel.tryReceive().getOrNull())
+        assertEquals("newer", player.pollPendingStateHtml())
+        assertNull(player.pollPendingStateHtml())
+    }
+
+    @Test
+    fun `broadcastToConnectedExcept excludes one player and updates others`() {
+        val game = createGameWithPlayers("Alice", "Bob", "Charlie")
+
+        game.broadcastToConnectedExcept("player1") { _, sessionId, _ -> "state-$sessionId" }
+
+        val creator = game.players["creator"]!!
+        val excluded = game.players["player1"]!!
+        val other = game.players["player2"]!!
+
+        assertEquals("state-creator", creator.pollPendingStateHtml())
+        assertNull(excluded.pollPendingStateHtml())
+        assertEquals("state-player2", other.pollPendingStateHtml())
     }
 
     @Test
@@ -673,6 +734,8 @@ class GameTest {
     fun `cleanup closes all player channels`() {
         val game = createGameWithPlayers("Alice", "Bob", "Charlie")
 
+        game.players.values.forEach { it.enqueueState("pre-cleanup", terminal = false, version = 1) }
+
         // Verify channels are open
         game.players.values.forEach { player ->
             assertFalse(player.channel.isClosedForSend)
@@ -683,6 +746,7 @@ class GameTest {
         // All channels should be closed
         game.players.values.forEach { player ->
             assertTrue(player.channel.isClosedForSend)
+            assertNull(player.pollPendingStateHtml())
         }
     }
 

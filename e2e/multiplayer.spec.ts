@@ -185,8 +185,8 @@ test.describe('Game Play', () => {
   });
 });
 
-test.describe('SSE Real-time Updates', () => {
-  test('page updates via SSE when another player joins', async ({ browser }) => {
+test.describe('Realtime Updates', () => {
+  test('page updates via WebSocket when another player joins', async ({ browser }) => {
     const player1 = await createPlayer(browser, 'Host');
     const player2 = await createPlayer(browser, 'Guest');
     
@@ -200,7 +200,7 @@ test.describe('SSE Real-time Updates', () => {
       // Player 2 joins
       await joinGame(player2.page, gameUrl, 'NewPlayer');
       
-      // Player 1's page should update automatically via SSE to show new player
+      // Player 1's page should update automatically via realtime WS to show new player
       // No page refresh needed
       await expect(player1.page.locator('.player-name:has-text("NewPlayer")')).toBeVisible({ timeout: 5000 });
     } finally {
@@ -226,7 +226,7 @@ test.describe('SSE Real-time Updates', () => {
       // Host starts the game
       await player1.page.locator('button:has-text("Start")').click();
       
-      // Both players should see the game started via SSE
+      // Both players should see the game started via realtime WS
       await expect(player1.page.locator('.game-area')).toBeVisible({ timeout: 5000 });
       await expect(player2.page.locator('.game-area')).toBeVisible({ timeout: 5000 });
     } finally {
@@ -267,7 +267,7 @@ test.describe('Host Switch Logic', () => {
       // Player 1 (host) closes their browser/disconnects
       await player1.context.close();
       
-      // Wait for SSE to detect disconnect and show countdown
+      // Wait for realtime update to show disconnect countdown
       await expect(async () => {
         const p2Countdown = await player2.page.locator('.player-countdown').isVisible().catch(() => false);
         const p3Countdown = await player3.page.locator('.player-countdown').isVisible().catch(() => false);
@@ -574,7 +574,7 @@ test.describe('Winner Determination', () => {
       // Now disconnect the original host (player1)
       await player1.context.close();
       
-      // Wait for SSE to detect disconnect and show countdown (may take a few seconds)
+      // Wait for realtime update to show disconnect countdown (may take a few seconds)
       // The countdown should appear on one of the remaining players' screens
       await expect(async () => {
         const p2Countdown = await player2.page.locator('.player-countdown').isVisible().catch(() => false);
@@ -582,7 +582,7 @@ test.describe('Winner Determination', () => {
         expect(p2Countdown || p3Countdown).toBe(true);
       }).toPass({ timeout: 10000 });
       
-      // Wait for grace period (15s) to expire + buffer for server maintenance ticker and SSE update
+      // Wait for grace period (15s) to expire + buffer for server maintenance ticker and realtime update
       await player2.page.waitForTimeout(18000);
       
       // After host disconnect, remaining players should still see the game over screen
@@ -592,7 +592,7 @@ test.describe('Winner Determination', () => {
       // At least one remaining player should still see the game over state
       expect(p2StillSees || p3StillSees).toBe(true);
       
-      // After host transfer via SSE, exactly one of the remaining players should see Play Again
+      // After host transfer via realtime update, exactly one of the remaining players should see Play Again
       // (the one who became the new host)
       const p2SeesPlayAgain = await player2.page.locator('button:has-text("Play Again")').isVisible().catch(() => false);
       const p3SeesPlayAgain = await player3.page.locator('button:has-text("Play Again")').isVisible().catch(() => false);

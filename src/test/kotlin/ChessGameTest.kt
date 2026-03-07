@@ -45,6 +45,18 @@ class ChessGameTest {
     }
 
     @Test
+    fun `chess player names are truncated to max length`() {
+        val game = ChessGame(creatorSessionId = "p1", randomColorAssignment = false)
+        val longName = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+        game.addPlayer("p1", longName)
+        game.addPlayer("p2", longName)
+
+        assertEquals(MAX_PLAYER_NAME_LENGTH, game.players["p1"]?.name?.length)
+        assertEquals(MAX_PLAYER_NAME_LENGTH, game.players["p2"]?.name?.length)
+    }
+
+    @Test
     fun `legal move advances turn`() {
         val game = startedGame()
 
@@ -159,6 +171,30 @@ class ChessGameTest {
     }
 
     @Test
+    fun `active player can surrender and game ends with surrender reason`() {
+        val game = startedGame()
+
+        val changed = game.surrender("p1")
+
+        assertTrue(changed)
+        assertEquals(ChessPhase.GAME_OVER, game.phase)
+        assertEquals("surrender", game.endReason)
+        assertEquals("p2", game.winnerSessionId)
+        assertTrue(game.autoRestartSecondsRemaining() > 0)
+    }
+
+    @Test
+    fun `spectator cannot surrender`() {
+        val game = startedGame()
+        game.addPlayer("p3", "Spec").connected = true
+
+        val changed = game.surrender("p3")
+
+        assertFalse(changed)
+        assertEquals(ChessPhase.IN_PROGRESS, game.phase)
+    }
+
+    @Test
     fun `checkmate schedules auto restart in non streamer mode`() {
         val game = startedGame()
 
@@ -218,7 +254,7 @@ class ChessGameTest {
 
         // Before first white move, simulated elapsed time must not reduce clocks.
         game.forceClockStartedForTesting(false)
-        game.forceCurrentTurnElapsedForTesting(120_000L)
+        game.forceCurrentTurnElapsedForTesting(ChessGame.WHITE_FIRST_MOVE_GRACE_MS - 1_000L)
         game.applyTurnClockTick()
         assertEquals(ChessGame.INITIAL_CLOCK_SECONDS, game.whiteClockSecondsRemaining())
         assertEquals(ChessGame.INITIAL_CLOCK_SECONDS, game.blackClockSecondsRemaining())
@@ -231,6 +267,50 @@ class ChessGameTest {
         game.applyTurnClockTick()
         assertTrue(game.blackClockSecondsRemaining() <= ChessGame.INITIAL_CLOCK_SECONDS - 1)
         assertEquals(ChessGame.INITIAL_CLOCK_SECONDS, game.whiteClockSecondsRemaining())
+    }
+
+    @Test
+    fun `timed mode starts white clock after first-move grace period`() {
+        val game = ChessGame(creatorSessionId = "p1", randomColorAssignment = false, timedModeEnabled = true)
+        game.addPlayer("p1", "Alice").connected = true
+        game.addPlayer("p2", "Bob").connected = true
+
+        game.forceCurrentTurnElapsedForTesting(ChessGame.WHITE_FIRST_MOVE_GRACE_MS + 2_000L)
+        game.applyTurnClockTick()
+
+        assertTrue(game.clockStarted())
+        assertTrue(game.whiteClockSecondsRemaining() <= ChessGame.INITIAL_CLOCK_SECONDS - 1)
+        assertEquals(ChessGame.INITIAL_CLOCK_SECONDS, game.blackClockSecondsRemaining())
+    }
+
+    @Test
+    fun `new game after surrender resets both clocks to initial value`() {
+        val game = ChessGame(creatorSessionId = "p1", randomColorAssignment = false, timedModeEnabled = true)
+        game.addPlayer("p1", "Alice").connected = true
+        game.addPlayer("p2", "Bob").connected = true
+
+        game.forceCurrentTurnElapsedForTesting(ChessGame.WHITE_FIRST_MOVE_GRACE_MS + 3_000L)
+        game.applyTurnClockTick()
+        val whiteBefore = game.whiteClockSecondsRemaining()
+        assertTrue(whiteBefore < ChessGame.INITIAL_CLOCK_SECONDS)
+
+        assertTrue(game.surrender("p1"))
+        assertTrue(game.resetForNewGame())
+
+        assertEquals(ChessGame.INITIAL_CLOCK_SECONDS, game.whiteClockSecondsRemaining())
+        assertEquals(ChessGame.INITIAL_CLOCK_SECONDS, game.blackClockSecondsRemaining())
+    }
+
+    @Test
+    fun `chess broadcastToConnectedExcept excludes one player and updates others`() {
+        val game = startedGame()
+        game.addPlayer("p3", "Cara").connected = true
+
+        game.broadcastToConnectedExcept("p2") { _, sessionId, _ -> "state-$sessionId" }
+
+        assertEquals("state-p1", game.players["p1"]?.pollPendingStateHtml())
+        assertNull(game.players["p2"]?.pollPendingStateHtml())
+        assertEquals("state-p3", game.players["p3"]?.pollPendingStateHtml())
     }
 
     @Test

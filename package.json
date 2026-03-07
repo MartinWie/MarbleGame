@@ -1,7 +1,7 @@
 {
   "name": "marblegame",
   "version": "1.0.0",
-  "description": "A real-time multiplayer marble game inspired by the Korean drama \"Squid Game\". Built with Kotlin/Ktor using Server-Sent Events (SSE) for instant updates.",
+  "description": "A real-time multiplayer marble game inspired by the Korean drama \"Squid Game\". Built with Kotlin/Ktor using WebSockets for instant updates.",
   "main": "index.js",
   "scripts": {
     "test": "./gradlew test && npm run test:e2e:fast",

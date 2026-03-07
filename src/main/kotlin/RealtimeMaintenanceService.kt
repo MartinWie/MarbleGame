@@ -109,7 +109,9 @@ internal object RealtimeMaintenanceService {
                         }
                     }
 
-                    game.applyTurnClockTick()
+                    if (game.applyTurnClockTick()) {
+                        stateChanged = true
+                    }
                     if (game.checkTurnTimeout()) {
                         stateChanged = true
                     }

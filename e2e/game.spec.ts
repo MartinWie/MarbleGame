@@ -418,6 +418,36 @@ test.describe('Chess Joining', () => {
     }
   });
 
+  test('active player can surrender and spectators do not see surrender button', async ({ browser }) => {
+    const p1Context = await browser.newContext();
+    const p1 = await p1Context.newPage();
+    const p2Context = await browser.newContext();
+    const p2 = await p2Context.newPage();
+    const p3Context = await browser.newContext();
+    const p3 = await p3Context.newPage();
+
+    try {
+      const gameId = await createChessGame(p1, 'Host');
+      await joinChessGame(p2, gameId, 'Opponent');
+      await joinChessGame(p3, gameId, 'Spectator');
+
+      await expect(p1.locator('.chess-surrender-btn')).toBeVisible();
+      await expect(p2.locator('.chess-surrender-btn')).toBeVisible();
+      await expect(p3.locator('.chess-surrender-btn')).toHaveCount(0);
+
+      await p1.locator('.chess-surrender-btn').click();
+      await expect(p1.locator('#surrender-modal')).toBeVisible();
+      await p1.locator('#surrender-confirm-btn').click();
+
+      await expect(p1.locator('.winner-text')).toContainText('Opponent');
+      await expect(p2.locator('.winner-text')).toContainText('Opponent');
+    } finally {
+      await p1Context.close();
+      await p2Context.close();
+      await p3Context.close();
+    }
+  });
+
   test('last move indicator appears on both players after move', async ({ browser }) => {
     const p1Context = await browser.newContext();
     const p1 = await p1Context.newPage();

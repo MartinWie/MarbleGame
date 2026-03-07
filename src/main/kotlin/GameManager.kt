@@ -98,7 +98,7 @@ object GameManager {
      * Removes a game from the manager.
      *
      * Should be called when a game is finished or abandoned. This does not
-     * clean up player connections - ensure all SSE connections are closed
+     * clean up player connections - ensure all realtime connections are closed
      * before removing the game.
      *
      * @param gameId The unique game ID to remove.

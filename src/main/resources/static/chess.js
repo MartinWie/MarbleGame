@@ -4,16 +4,16 @@ function initChess(gameId) {
     }
 
     var chessContent = document.getElementById('chess-content');
-    var eventSource = null;
     var webSocket = null;
     var countdownInterval = null;
     var reconnectTimeout = null;
     var isConnecting = false;
-    var transportMode = detectTransportMode();
-    var wsFailed = false;
     var reconnectDelayMs = 1000;
-    var wsRetryAt = 0;
     var connectWatchdogTimeout = null;
+    var realtimeShared = window.realtimeShared;
+    var uiShared = window.uiShared;
+    var consecutiveConnectFailures = 0;
+    var realtimeFailureBannerShown = false;
     var lastPingTime = Date.now();
     var pingCheckInterval = null;
     var selectedFrom = null;
@@ -22,6 +22,9 @@ function initChess(gameId) {
     var legalTargetSet = {};
     var boardSnapshot = {};
     var animationTimeout = null;
+    var moveTrailRevealTimeout = null;
+    var moveTrailCleanupTimeout = null;
+    var moveTrailRunId = 0;
     var suppressClickUntil = 0;
     var dragGhost = null;
     var touchMoved = false;
@@ -39,38 +42,15 @@ function initChess(gameId) {
     var audioUnlocked = false;
     var previousTurnColor = '';
     var lastAnimatedMoveMeta = '';
-    var soundOnIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-volume-up" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M11.536 14.01A8.47 8.47 0 0 0 14.026 8a8.47 8.47 0 0 0-2.49-6.01l-.708.707A7.48 7.48 0 0 1 13.025 8c0 2.071-.84 3.946-2.197 5.303z"/><path d="M10.121 12.596A6.48 6.48 0 0 0 12.025 8a6.48 6.48 0 0 0-1.904-4.596l-.707.707A5.48 5.48 0 0 1 11.025 8a5.48 5.48 0 0 1-1.61 3.89z"/><path d="M10.025 8a4.5 4.5 0 0 1-1.318 3.182L8 10.475A3.5 3.5 0 0 0 9.025 8c0-.966-.392-1.841-1.025-2.475l.707-.707A4.5 4.5 0 0 1 10.025 8M7 4a.5.5 0 0 0-.812-.39L3.825 5.5H1.5A.5.5 0 0 0 1 6v4a.5.5 0 0 0 .5.5h2.325l2.363 1.89A.5.5 0 0 0 7 12zM4.312 6.39 6 5.04v5.92L4.312 9.61A.5.5 0 0 0 4 9.5H2v-3h2a.5.5 0 0 0 .312-.11"/></svg>';
-    var soundMutedIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-volume-mute-fill" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6.717 3.55A.5.5 0 0 1 7 4v8a.5.5 0 0 1-.812.39L3.825 10.5H1.5A.5.5 0 0 1 1 10V6a.5.5 0 0 1 .5-.5h2.325l2.363-1.89a.5.5 0 0 1 .529-.06m7.137 2.096a.5.5 0 0 1 0 .708L12.207 8l1.647 1.646a.5.5 0 0 1-.708.708L11.5 8.707l-1.646 1.647a.5.5 0 0 1-.708-.708L10.793 8 9.146 6.354a.5.5 0 1 1 .708-.708L11.5 7.293l1.646-1.647a.5.5 0 0 1 .708 0"/></svg>';
-
-    function detectTransportMode() {
-        var meta = document.querySelector('meta[name="realtime-transport"]');
-        var mode = meta ? ((meta.getAttribute('content') || '').toLowerCase()) : 'auto';
-        if (mode !== 'ws' && mode !== 'sse' && mode !== 'auto') return 'auto';
-        return mode;
-    }
-
-    function shouldTryWs() {
-        if (transportMode === 'sse') return false;
-        if (transportMode === 'auto' && wsFailed && Date.now() < wsRetryAt) return false;
-        return typeof window.WebSocket === 'function';
-    }
-
-    function wsUrl(path) {
-        var proto = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-        return proto + window.location.host + path;
-    }
 
     function closeRealtimeConnection() {
         if (connectWatchdogTimeout) {
             clearTimeout(connectWatchdogTimeout);
             connectWatchdogTimeout = null;
         }
-        if (eventSource) {
-            eventSource.onerror = null;
-            eventSource.close();
-            eventSource = null;
-        }
-        if (webSocket) {
+        if (realtimeShared) {
+            webSocket = realtimeShared.closeWebSocket(webSocket);
+        } else if (webSocket) {
             webSocket.onopen = null;
             webSocket.onmessage = null;
             webSocket.onerror = null;
@@ -83,6 +63,10 @@ function initChess(gameId) {
     }
 
     function bindShareButton() {
+        if (uiShared) {
+            uiShared.bindShareButton({ buttonId: 'share-btn', toastDurationMs: 1800 });
+            return;
+        }
         var shareBtn = document.getElementById('share-btn');
         if (!shareBtn || shareBtn.dataset.shareBound === '1') return;
         shareBtn.dataset.shareBound = '1';
@@ -163,6 +147,12 @@ function initChess(gameId) {
         });
     }
 
+    function showRealtimeFailureBanner() {
+        if (realtimeFailureBannerShown) return;
+        realtimeFailureBannerShown = true;
+        showToast('Realtime connection lost. Trying to reconnect...', true);
+    }
+
     function ensureAudioContext() {
         if (!audioCtx) {
             var Ctx = window.AudioContext || window.webkitAudioContext;
@@ -207,13 +197,14 @@ function initChess(gameId) {
     }
 
     function syncSoundButton() {
+        if (uiShared) return;
         var btn = document.getElementById('sound-btn');
         if (!btn) return;
         var onText = btn.dataset.soundOn || 'Sound On';
         var offText = btn.dataset.soundOff || 'Sound Off';
         var iconWrap = btn.querySelector('.sound-icon');
         if (iconWrap) {
-            iconWrap.innerHTML = soundMuted ? soundMutedIcon : soundOnIcon;
+            iconWrap.innerHTML = soundMuted ? '🔇' : '🔊';
         }
         var stateText = soundMuted ? offText : onText;
         btn.setAttribute('aria-label', stateText);
@@ -221,6 +212,17 @@ function initChess(gameId) {
     }
 
     function bindSoundButton() {
+        if (uiShared) {
+            uiShared.bindSoundButton({
+                buttonId: 'sound-btn',
+                storageKey: 'marblegame_sound_muted',
+                onToggle: function(nextMuted) {
+                    soundMuted = !!nextMuted;
+                    unlockAudio();
+                },
+            });
+            return;
+        }
         var btn = document.getElementById('sound-btn');
         if (!btn || btn.dataset.soundBound === '1') return;
         btn.dataset.soundBound = '1';
@@ -269,6 +271,51 @@ function initChess(gameId) {
                 qrBtn.classList.remove('active');
                 qrBtn.setAttribute('aria-expanded', 'false');
             }
+        });
+    }
+
+    function bindSurrenderButton() {
+        var surrenderBtn = document.getElementById('surrender-btn');
+        var surrenderModal = document.getElementById('surrender-modal');
+        var cancelBtn = document.getElementById('surrender-cancel-btn');
+        var confirmBtn = document.getElementById('surrender-confirm-btn');
+        if (!surrenderBtn || !surrenderModal || !cancelBtn || !confirmBtn || surrenderBtn.dataset.surrenderBound === '1') return;
+        surrenderBtn.dataset.surrenderBound = '1';
+
+        surrenderModal.addEventListener('close', function() {
+            surrenderBtn.classList.remove('active');
+        });
+
+        surrenderModal.addEventListener('click', function(e) {
+            var box = surrenderModal.querySelector('.surrender-modal-box');
+            if (box && !box.contains(e.target)) {
+                surrenderModal.close();
+            }
+        });
+
+        surrenderBtn.addEventListener('click', function() {
+            surrenderBtn.classList.add('active');
+            if (typeof surrenderModal.showModal === 'function') {
+                if (!surrenderModal.open) {
+                    surrenderModal.showModal();
+                }
+            } else {
+                surrenderModal.setAttribute('open', '');
+            }
+        });
+
+        cancelBtn.addEventListener('click', function() {
+            if (surrenderModal.open) {
+                surrenderModal.close();
+            }
+            surrenderBtn.classList.remove('active');
+        });
+
+        confirmBtn.addEventListener('click', function() {
+            if (surrenderModal.open) {
+                surrenderModal.close();
+            }
+            surrenderBtn.classList.remove('active');
         });
     }
 
@@ -336,15 +383,15 @@ function initChess(gameId) {
             return m + ':' + (rem < 10 ? '0' : '') + rem;
         }
 
-        var whiteEl = document.querySelector('.clock-white');
-        var blackEl = document.querySelector('.clock-black');
-        if (whiteEl) {
-            var wPrefix = whiteEl.getAttribute('data-prefix') || 'White';
-            whiteEl.textContent = wPrefix + ': ' + formatClock(w);
+        var ownEl = document.querySelector('.clock-own');
+        var enemyEl = document.querySelector('.clock-enemy');
+        if (ownEl) {
+            var ownSide = ownEl.getAttribute('data-clock-side') || 'white';
+            ownEl.textContent = formatClock(ownSide === 'white' ? w : b);
         }
-        if (blackEl) {
-            var bPrefix = blackEl.getAttribute('data-prefix') || 'Black';
-            blackEl.textContent = bPrefix + ': ' + formatClock(b);
+        if (enemyEl) {
+            var enemySide = enemyEl.getAttribute('data-clock-side') || 'black';
+            enemyEl.textContent = formatClock(enemySide === 'white' ? w : b);
         }
     }
 
@@ -365,6 +412,7 @@ function initChess(gameId) {
         bindShareButton();
         bindSoundButton();
         bindQrButton();
+        bindSurrenderButton();
         bindBoardInteractions();
         boardSnapshot = captureBoardSnapshot();
         var boardEl = document.querySelector('.chess-board');
@@ -390,6 +438,19 @@ function initChess(gameId) {
     }
 
     function scheduleReconnect() {
+        if (realtimeShared) {
+            var state = {
+                reconnectTimeout: reconnectTimeout,
+                reconnectDelayMs: reconnectDelayMs,
+            };
+            realtimeShared.scheduleReconnect(state, function() {
+                reconnectTimeout = null;
+                connect();
+            });
+            reconnectTimeout = state.reconnectTimeout;
+            reconnectDelayMs = state.reconnectDelayMs;
+            return;
+        }
         if (!reconnectTimeout) {
             var delay = reconnectDelayMs;
             var jitter = Math.floor(Math.random() * 250);
@@ -402,58 +463,25 @@ function initChess(gameId) {
         }
     }
 
-    function connectSse() {
-        eventSource = new EventSource('/chess/' + gameId + '/events');
-        lastPingTime = Date.now();
-
-        connectWatchdogTimeout = setTimeout(function() {
-            if (isConnecting && eventSource && eventSource.readyState !== EventSource.OPEN) {
-                isConnecting = false;
-                closeRealtimeConnection();
-                scheduleReconnect();
-            }
-        }, 10000);
-
-        eventSource.addEventListener('open', function() {
-            isConnecting = false;
-            reconnectDelayMs = 1000;
-            if (connectWatchdogTimeout) {
-                clearTimeout(connectWatchdogTimeout);
-                connectWatchdogTimeout = null;
-            }
-        });
-
-        eventSource.addEventListener('chess-update', function(e) {
-            handleChessUpdate(e.data);
-        });
-
-        eventSource.addEventListener('ping', function() {
-            lastPingTime = Date.now();
-        });
-
-        eventSource.onerror = function() {
-            isConnecting = false;
-            moveInFlight = false;
-            if (connectWatchdogTimeout) {
-                clearTimeout(connectWatchdogTimeout);
-                connectWatchdogTimeout = null;
-            }
-            closeRealtimeConnection();
-            scheduleReconnect();
-        };
-    }
-
     function connectWs() {
-        webSocket = new WebSocket(wsUrl('/ws/chess/' + gameId));
+        if (typeof window.WebSocket !== 'function') {
+            isConnecting = false;
+            consecutiveConnectFailures += 1;
+            if (consecutiveConnectFailures >= 5) {
+                showRealtimeFailureBanner();
+            }
+            scheduleReconnect();
+            return;
+        }
+        var wsTarget = realtimeShared
+            ? realtimeShared.wsUrl('/ws/chess/' + gameId)
+            : ((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/chess/' + gameId);
+        webSocket = new WebSocket(wsTarget);
         lastPingTime = Date.now();
 
         connectWatchdogTimeout = setTimeout(function() {
             if (isConnecting && webSocket && webSocket.readyState === WebSocket.CONNECTING) {
                 isConnecting = false;
-                if (transportMode === 'auto') {
-                    wsFailed = true;
-                    wsRetryAt = Date.now() + 120000;
-                }
                 closeRealtimeConnection();
                 scheduleReconnect();
             }
@@ -461,9 +489,9 @@ function initChess(gameId) {
 
         webSocket.onopen = function() {
             isConnecting = false;
-            wsFailed = false;
-            wsRetryAt = 0;
             reconnectDelayMs = 1000;
+            consecutiveConnectFailures = 0;
+            realtimeFailureBannerShown = false;
             if (connectWatchdogTimeout) {
                 clearTimeout(connectWatchdogTimeout);
                 connectWatchdogTimeout = null;
@@ -495,9 +523,9 @@ function initChess(gameId) {
                 connectWatchdogTimeout = null;
             }
             closeRealtimeConnection();
-            if (transportMode === 'auto') {
-                wsFailed = true;
-                wsRetryAt = Date.now() + 120000;
+            consecutiveConnectFailures += 1;
+            if (consecutiveConnectFailures >= 5) {
+                showRealtimeFailureBanner();
             }
             scheduleReconnect();
         };
@@ -508,17 +536,17 @@ function initChess(gameId) {
         isConnecting = true;
 
         if (reconnectTimeout) {
-            clearTimeout(reconnectTimeout);
-            reconnectTimeout = null;
+            if (realtimeShared) {
+                realtimeShared.clearReconnectTimer({ reconnectTimeout: reconnectTimeout });
+                reconnectTimeout = null;
+            } else {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
         }
 
         closeRealtimeConnection();
-
-        if (shouldTryWs()) {
-            connectWs();
-        } else {
-            connectSse();
-        }
+        connectWs();
     }
 
     function patchIncrementalState(newHtml) {
@@ -630,6 +658,7 @@ function initChess(gameId) {
         bindShareButton();
         bindSoundButton();
         bindQrButton();
+        bindSurrenderButton();
         bindBoardInteractions();
         boardSnapshot = captureBoardSnapshot();
         lastUpdateAt = Date.now();
@@ -764,6 +793,10 @@ function initChess(gameId) {
 
 
     function showToast(message, atTop) {
+        if (uiShared) {
+            uiShared.showToast(message, atTop, 1800);
+            return;
+        }
         if (!message) return;
 
         var existing = document.getElementById('chess-toast');
@@ -963,6 +996,31 @@ function initChess(gameId) {
     }
 
     function animatePieceTravel(kind, from, to, previousSnapshot) {
+        var travelDurationMs = 700;
+        var revealLeadMs = 120;
+        moveTrailRunId += 1;
+        var runId = moveTrailRunId;
+
+        if (moveTrailRevealTimeout) {
+            clearTimeout(moveTrailRevealTimeout);
+            moveTrailRevealTimeout = null;
+        }
+        if (moveTrailCleanupTimeout) {
+            clearTimeout(moveTrailCleanupTimeout);
+            moveTrailCleanupTimeout = null;
+        }
+
+        document.querySelectorAll('.move-trail-piece').forEach(function(el) {
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+        });
+        document.querySelectorAll('.chess-piece.move-arrival-hidden').forEach(function(el) {
+            el.classList.remove('move-arrival-hidden');
+        });
+        var activeShell = document.getElementById('chess-board-shell');
+        if (activeShell) {
+            activeShell.classList.remove('animating');
+        }
+
         var fromEl = document.querySelector('.chess-square[data-square="' + from + '"]');
         var toEl = document.querySelector('.chess-square[data-square="' + to + '"]');
         var boardShell = document.getElementById('chess-board-shell');
@@ -1012,13 +1070,8 @@ function initChess(gameId) {
         piece.style.top = fromCenterY + 'px';
         boardShell.appendChild(piece);
 
-        document.querySelectorAll('.chess-piece.move-arrival-hidden').forEach(function(el) {
-            el.classList.remove('move-arrival-hidden');
-            el.style.visibility = '';
-        });
         if (destinationPieceEl) {
             destinationPieceEl.classList.add('move-arrival-hidden');
-            destinationPieceEl.style.visibility = 'hidden';
         }
 
         var dx = toCenterX - fromCenterX;
@@ -1027,14 +1080,14 @@ function initChess(gameId) {
             piece.animate(
                 [
                     { transform: 'translate(-50%, -50%)', opacity: 1 },
-                    { transform: 'translate(' + dx + 'px,' + dy + 'px) translate(-50%, -50%) scale(1.03)', opacity: 0.98 },
+                    { transform: 'translate(' + dx + 'px,' + dy + 'px) translate(-50%, -50%)', opacity: 1 },
                 ],
-                { duration: 1400, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'forwards' },
+                { duration: travelDurationMs, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'forwards' },
             );
         } else {
             requestAnimationFrame(function() {
-                piece.style.transform = 'translate(' + dx + 'px,' + dy + 'px) translate(-50%, -50%) scale(1.03)';
-                piece.style.opacity = '0.98';
+                piece.style.transform = 'translate(' + dx + 'px,' + dy + 'px) translate(-50%, -50%)';
+                piece.style.opacity = '1';
             });
         }
 
@@ -1059,17 +1112,25 @@ function initChess(gameId) {
             }
         }
 
-        setTimeout(function() {
+        moveTrailRevealTimeout = setTimeout(function() {
+            if (runId !== moveTrailRunId) return;
+            var restoredDestinationPieceEl = toEl.querySelector('.chess-piece');
+            if (restoredDestinationPieceEl) {
+                restoredDestinationPieceEl.classList.remove('move-arrival-hidden');
+            }
+            moveTrailRevealTimeout = null;
+        }, Math.max(0, travelDurationMs - revealLeadMs));
+
+        moveTrailCleanupTimeout = setTimeout(function() {
+            if (runId !== moveTrailRunId) return;
             if (piece.parentNode) piece.parentNode.removeChild(piece);
-            requestAnimationFrame(function() {
-                var restoredDestinationPieceEl = toEl.querySelector('.chess-piece');
-                if (restoredDestinationPieceEl) {
-                    restoredDestinationPieceEl.classList.remove('move-arrival-hidden');
-                    restoredDestinationPieceEl.style.visibility = '';
-                }
-                boardShell.classList.remove('animating');
-            });
-        }, 1420);
+            var restoredDestinationPieceEl = toEl.querySelector('.chess-piece');
+            if (restoredDestinationPieceEl) {
+                restoredDestinationPieceEl.classList.remove('move-arrival-hidden');
+            }
+            boardShell.classList.remove('animating');
+            moveTrailCleanupTimeout = null;
+        }, travelDurationMs + 20);
     }
 
     function syncTurnMetadataAfterLocalMove(from, to) {
@@ -1640,6 +1701,7 @@ function initChess(gameId) {
     bindShareButton();
     bindSoundButton();
     bindQrButton();
+    bindSurrenderButton();
     bindBoardInteractions();
     boardSnapshot = captureBoardSnapshot();
     var initialBoard = document.querySelector('.chess-board');

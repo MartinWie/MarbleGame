@@ -287,11 +287,11 @@ internal fun HTML.basePage(
  * - Page head with meta tags, HTMX script, and styles
  * - Game header with title, game code, and share button
  * - Initial game content (via [renderGameState])
- * - Client-side JavaScript for SSE handling, reconnection, and UI interactions
+ * - Client-side JavaScript for WebSocket handling, reconnection, and UI interactions
  *
- * The rendered page uses Server-Sent Events (SSE) to receive real-time updates
+ * The rendered page uses WebSockets to receive real-time updates
  * from the server. The JavaScript handles:
- * - SSE connection and reconnection on errors
+ * - WebSocket connection and reconnection on errors
  * - Ping timeout detection (reloads if no ping for 45 seconds)
  * - Tab visibility changes (reconnects when tab becomes visible)
  * - Countdown timers for disconnected players
@@ -312,10 +312,9 @@ fun HTML.renderGamePage(
         title = "${"game.title".t(lang)} - ${game.id}",
         lang = lang,
         includeHtmx = true,
-        extraHead = {
-            meta(name = "realtime-transport", content = RealtimeConfig.transportMode)
-        },
         extraBodyContent = {
+            script(src = "/static/realtime.js") {}
+            script(src = "/static/ui-shared.js") {}
             // Load game script and initialize with game ID
             script(src = "/static/game.js") {}
             script {

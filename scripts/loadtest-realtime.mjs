@@ -4,13 +4,18 @@ import { performance } from 'node:perf_hooks';
 
 const defaults = {
   baseUrl: 'http://localhost:8080',
+  mode: 'single-hotspot',
+  gameType: 'marbles',
   start: 50,
   max: 1600,
   holdSec: 20,
   rampSec: 10,
   stepMode: 'x2',
-  gameType: 'marbles',
   concurrency: 100,
+  games: 100,
+  playersPerGame: 4,
+  hotspotPlayers: 300,
+  maxTotalPlayers: 4000,
 };
 
 function parseArgs(argv) {
@@ -20,6 +25,12 @@ function parseArgs(argv) {
     const next = argv[i + 1];
     if (a === '--base' && next) {
       args.baseUrl = next;
+      i += 1;
+    } else if (a === '--mode' && next) {
+      args.mode = next;
+      i += 1;
+    } else if (a === '--game' && next) {
+      args.gameType = next;
       i += 1;
     } else if (a === '--start' && next) {
       args.start = parseInt(next, 10);
@@ -36,15 +47,74 @@ function parseArgs(argv) {
     } else if (a === '--step' && next) {
       args.stepMode = next;
       i += 1;
-    } else if (a === '--game' && next) {
-      args.gameType = next;
-      i += 1;
     } else if (a === '--concurrency' && next) {
       args.concurrency = parseInt(next, 10);
+      i += 1;
+    } else if (a === '--games' && next) {
+      args.games = parseInt(next, 10);
+      i += 1;
+    } else if (a === '--players-per-game' && next) {
+      args.playersPerGame = parseInt(next, 10);
+      i += 1;
+    } else if (a === '--hotspot-players' && next) {
+      args.hotspotPlayers = parseInt(next, 10);
+      i += 1;
+    } else if (a === '--max-total-players' && next) {
+      args.maxTotalPlayers = parseInt(next, 10);
       i += 1;
     }
   }
   return args;
+}
+
+function validateArgs(args) {
+  const requirePositiveInt = (name) => {
+    const value = args[name];
+    if (!Number.isFinite(value) || value <= 0 || Math.floor(value) !== value) {
+      throw new Error(`Invalid --${name.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())}: ${value}`);
+    }
+  };
+
+  if (!['single-hotspot', 'many-small', 'mixed'].includes(args.mode)) {
+    throw new Error(`Invalid --mode '${args.mode}'. Use single-hotspot|many-small|mixed.`);
+  }
+
+  if (!['marbles', 'chess'].includes(args.gameType)) {
+    throw new Error(`Invalid --game '${args.gameType}'. Use marbles|chess.`);
+  }
+
+  if (!(args.stepMode.startsWith('x') || args.stepMode.startsWith('+'))) {
+    throw new Error(`Invalid --step '${args.stepMode}'. Use xN or +N.`);
+  }
+
+  if (args.stepMode.startsWith('x')) {
+    const factor = Number(args.stepMode.slice(1));
+    if (!Number.isFinite(factor) || factor <= 1) {
+      throw new Error(`Invalid --step '${args.stepMode}'. xN requires numeric N > 1.`);
+    }
+  }
+  if (args.stepMode.startsWith('+')) {
+    const inc = Number(args.stepMode.slice(1));
+    if (!Number.isFinite(inc) || inc < 1 || Math.floor(inc) !== inc) {
+      throw new Error(`Invalid --step '${args.stepMode}'. +N requires integer N >= 1.`);
+    }
+  }
+
+  [
+    'start',
+    'max',
+    'holdSec',
+    'rampSec',
+    'concurrency',
+    'games',
+    'playersPerGame',
+    'hotspotPlayers',
+    'maxTotalPlayers',
+  ].forEach(requirePositiveInt);
+
+  if (args.max < args.start) {
+    throw new Error(`Invalid range: --max (${args.max}) must be >= --start (${args.start})`);
+  }
 }
 
 function percentile(values, p) {
@@ -202,8 +272,9 @@ function nextStageSize(current, stepMode) {
   return current * 2;
 }
 
-async function runStage(args, gameId, targetPlayers) {
-  const results = {
+function createStats(label, targetPlayers, extra = {}) {
+  return {
+    label,
     targetPlayers,
     joinOk: 0,
     joinFail: 0,
@@ -215,66 +286,73 @@ async function runStage(args, gameId, targetPlayers) {
     totalMessages: 0,
     joinFailReasons: Object.create(null),
     wsFailReasons: Object.create(null),
+    ...extra,
   };
+}
 
-  function bumpReason(bucket, reason) {
-    const key = reason || 'unknown';
-    bucket[key] = (bucket[key] || 0) + 1;
-  }
+function bumpReason(bucket, reason) {
+  const key = reason || 'unknown';
+  bucket[key] = (bucket[key] || 0) + 1;
+}
 
-  const rampMs = Math.max(1, args.rampSec * 1000);
-  const spacingMs = Math.max(1, Math.floor(rampMs / targetPlayers));
-
-  const taskIndexes = Array.from({ length: targetPlayers }, (_, i) => i);
-  const workerCount = Math.max(1, Math.min(args.concurrency, targetPlayers));
+async function runPlayerTasks(args, tasks, stats, rampMs) {
+  const spacingMs = Math.max(1, Math.floor(rampMs / Math.max(1, tasks.length)));
+  const stageStartMs = Date.now();
+  const taskIndexes = Array.from({ length: tasks.length }, (_, i) => i);
+  const workerCount = Math.max(1, Math.min(args.concurrency, tasks.length));
 
   const workers = Array.from({ length: workerCount }, async () => {
     while (taskIndexes.length > 0) {
       const i = taskIndexes.shift();
       if (typeof i !== 'number') break;
 
-      await sleep(i * spacingMs);
-      const playerName = randomName('p');
-      try {
-        const cookie = await joinGame(args.baseUrl, args.gameType, gameId, playerName);
-        results.joinOk += 1;
+      const task = tasks[i];
+      const targetStartMs = stageStartMs + (i * spacingMs);
+      const waitMs = Math.max(0, targetStartMs - Date.now());
+      if (waitMs > 0) {
+        await sleep(waitMs);
+      }
 
-        const wsRes = await connectWs(args.baseUrl, args.gameType, gameId, cookie);
+      try {
+        const cookie = await joinGame(args.baseUrl, args.gameType, task.gameId, task.playerName);
+        stats.joinOk += 1;
+
+        const wsRes = await connectWs(args.baseUrl, args.gameType, task.gameId, cookie);
         if (!wsRes.ok) {
-          results.wsFail += 1;
-          bumpReason(results.wsFailReasons, wsRes.error || 'ws-fail');
+          stats.wsFail += 1;
+          bumpReason(stats.wsFailReasons, wsRes.error || 'ws-fail');
           continue;
         }
 
-        results.wsOk += 1;
-        results.connectLatencies.push(wsRes.connectMs);
-        results.sockets.push(wsRes);
+        stats.wsOk += 1;
+        stats.connectLatencies.push(wsRes.connectMs);
+        stats.sockets.push(wsRes);
       } catch (err) {
-        results.joinFail += 1;
-        bumpReason(results.joinFailReasons, err && err.message ? err.message : 'join-fail');
+        stats.joinFail += 1;
+        bumpReason(stats.joinFailReasons, err && err.message ? err.message : 'join-fail');
       }
     }
   });
 
   await Promise.all(workers);
+}
 
-  await sleep(args.holdSec * 1000);
+async function finalizeHold(stats, holdSec) {
+  await sleep(holdSec * 1000);
 
-  for (const wsRes of results.sockets) {
+  for (const wsRes of stats.sockets) {
     const s = wsRes.stats();
     if (s.closedUnexpectedly) {
-      results.unexpectedCloses += 1;
+      stats.unexpectedCloses += 1;
     }
-    results.totalMessages += s.messages;
+    stats.totalMessages += s.messages;
   }
 
-  for (const wsRes of results.sockets) {
+  for (const wsRes of stats.sockets) {
     try {
       wsRes.socket.close();
     } catch (_) {}
   }
-
-  return results;
 }
 
 function classifyStage(stage) {
@@ -296,11 +374,27 @@ function memorySummary() {
   };
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
+function logStageResult(stage, classified) {
+  console.log(
+    [
+      `label=${stage.label}`,
+      `joinOk=${stage.joinOk}`,
+      `joinFail=${stage.joinFail}`,
+      `wsOk=${stage.wsOk}`,
+      `wsFail=${stage.wsFail}`,
+      `openRate=${(classified.openRate * 100).toFixed(1)}%`,
+      `p95=${Math.round(classified.p95)}ms`,
+      `unexpectedCloseRate=${(classified.unexpectedCloseRate * 100).toFixed(1)}%`,
+      `msgs=${stage.totalMessages}`,
+      `joinFailReasons=${JSON.stringify(stage.joinFailReasons)}`,
+      `wsFailReasons=${JSON.stringify(stage.wsFailReasons)}`,
+      `clientMem=${JSON.stringify(memorySummary())}`,
+      `result=${classified.pass ? 'PASS' : 'FAIL'}`,
+    ].join(' | '),
+  );
+}
 
-  console.log('Load test config:', JSON.stringify(args));
-
+async function runSingleHotspotMode(args) {
   let size = args.start;
   let lastPass = null;
   let firstFail = null;
@@ -311,52 +405,155 @@ async function main() {
     const { gameId } = await createGame(args.baseUrl, args.gameType);
     console.log(`Stage game: ${gameId}`);
 
-    const stage = await runStage(args, gameId, size);
-    const c = classifyStage(stage);
-    stageResults.push({ ...stage, ...c });
+    const stats = createStats(`single-hotspot-${size}`, size, { gameId });
+    const tasks = Array.from({ length: size }, () => ({ gameId, playerName: randomName('p') }));
 
-    console.log(
-      [
-        `joinOk=${stage.joinOk}`,
-        `joinFail=${stage.joinFail}`,
-        `wsOk=${stage.wsOk}`,
-        `wsFail=${stage.wsFail}`,
-        `openRate=${(c.openRate * 100).toFixed(1)}%`,
-        `p95=${Math.round(c.p95)}ms`,
-        `unexpectedCloseRate=${(c.unexpectedCloseRate * 100).toFixed(1)}%`,
-        `msgs=${stage.totalMessages}`,
-        `joinFailReasons=${JSON.stringify(stage.joinFailReasons)}`,
-        `wsFailReasons=${JSON.stringify(stage.wsFailReasons)}`,
-        `clientMem=${JSON.stringify(memorySummary())}`,
-        `result=${c.pass ? 'PASS' : 'FAIL'}`,
-      ].join(' | '),
-    );
+    await runPlayerTasks(args, tasks, stats, Math.max(1, args.rampSec * 1000));
+    await finalizeHold(stats, args.holdSec);
 
-    if (c.pass) {
-      lastPass = stage.targetPlayers;
+    const classified = classifyStage(stats);
+    stageResults.push({ ...stats, ...classified });
+    logStageResult(stats, classified);
+
+    if (classified.pass) {
+      lastPass = size;
       size = nextStageSize(size, args.stepMode);
     } else {
-      firstFail = stage.targetPlayers;
+      firstFail = size;
       break;
     }
   }
 
-  console.log('\n=== Summary ===');
-  if (lastPass == null && firstFail != null) {
-    console.log(`No passing stage. First failure at ${firstFail}.`);
-  } else if (lastPass != null && firstFail == null) {
-    console.log(`No failure up to max=${args.max}. Last passing stage: ${lastPass}.`);
-  } else {
-    console.log(`Last passing stage: ${lastPass}, first failing stage: ${firstFail}.`);
+  return { mode: args.mode, stageResults, lastPass, firstFail };
+}
+
+async function runManySmallMode(args) {
+  const totalPlayers = args.games * args.playersPerGame;
+  console.log(`\nMode many-small: games=${args.games}, playersPerGame=${args.playersPerGame}, totalPlayers=${totalPlayers}`);
+
+  const gameIds = [];
+  for (let i = 0; i < args.games; i += 1) {
+    const created = await createGame(args.baseUrl, args.gameType);
+    gameIds.push(created.gameId);
   }
 
-  const best = stageResults.filter((r) => r.pass).at(-1);
+  const tasks = [];
+  for (const gameId of gameIds) {
+    for (let i = 0; i < args.playersPerGame; i += 1) {
+      tasks.push({ gameId, playerName: randomName('p') });
+    }
+  }
+
+  const stats = createStats(`many-small-${args.games}x${args.playersPerGame}`, totalPlayers, {
+    gameCount: args.games,
+    playersPerGame: args.playersPerGame,
+  });
+
+  await runPlayerTasks(args, tasks, stats, Math.max(1, args.rampSec * 1000));
+  await finalizeHold(stats, args.holdSec);
+
+  const classified = classifyStage(stats);
+  logStageResult(stats, classified);
+
+  return {
+    mode: args.mode,
+    stageResults: [{ ...stats, ...classified }],
+    lastPass: classified.pass ? totalPlayers : null,
+    firstFail: classified.pass ? null : totalPlayers,
+  };
+}
+
+async function runMixedMode(args) {
+  console.log(
+    `\nMode mixed: hotspotPlayers=${args.hotspotPlayers}, smallGames=${args.games}, playersPerGame=${args.playersPerGame}`,
+  );
+
+  const hotspot = await createGame(args.baseUrl, args.gameType);
+  const gameIds = [];
+  for (let i = 0; i < args.games; i += 1) {
+    const created = await createGame(args.baseUrl, args.gameType);
+    gameIds.push(created.gameId);
+  }
+
+  const tasks = [];
+  for (let i = 0; i < args.hotspotPlayers; i += 1) {
+    tasks.push({ gameId: hotspot.gameId, playerName: randomName('hot') });
+  }
+  for (const gameId of gameIds) {
+    for (let i = 0; i < args.playersPerGame; i += 1) {
+      tasks.push({ gameId, playerName: randomName('sm') });
+    }
+  }
+
+  const totalPlayers = tasks.length;
+  if (totalPlayers > args.maxTotalPlayers) {
+    throw new Error(`Mixed mode total players ${totalPlayers} exceeds --max-total-players=${args.maxTotalPlayers}`);
+  }
+
+  const stats = createStats(
+    `mixed-hot${args.hotspotPlayers}-small${args.games}x${args.playersPerGame}`,
+    totalPlayers,
+    {
+      hotspotGameId: hotspot.gameId,
+      smallGameCount: args.games,
+    },
+  );
+
+  await runPlayerTasks(args, tasks, stats, Math.max(1, args.rampSec * 1000));
+  await finalizeHold(stats, args.holdSec);
+
+  const classified = classifyStage(stats);
+  logStageResult(stats, classified);
+
+  return {
+    mode: args.mode,
+    stageResults: [{ ...stats, ...classified }],
+    lastPass: classified.pass ? totalPlayers : null,
+    firstFail: classified.pass ? null : totalPlayers,
+  };
+}
+
+function printSummary(summary, args) {
+  console.log('\n=== Summary ===');
+
+  if (summary.lastPass == null && summary.firstFail != null) {
+    console.log(`No passing stage. First failure at ${summary.firstFail}.`);
+  } else if (summary.lastPass != null && summary.firstFail == null) {
+    if (args.mode === 'single-hotspot') {
+      console.log(`No failure up to max=${args.max}. Last passing stage: ${summary.lastPass}.`);
+    } else {
+      console.log(`Profile passed with total players=${summary.lastPass}.`);
+    }
+  } else {
+    console.log(`Last passing stage: ${summary.lastPass}, first failing stage: ${summary.firstFail}.`);
+  }
+
+  const best = summary.stageResults.filter((r) => r.pass).at(-1);
   if (best) {
     console.log(
-      `Estimated stable concurrent players (local, this machine): ~${best.targetPlayers} ` +
+      `Estimated stable concurrent players for mode ${summary.mode}: ~${best.targetPlayers} ` +
         `(p95 ${Math.round(best.p95)}ms, open ${(best.openRate * 100).toFixed(1)}%).`,
     );
   }
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  validateArgs(args);
+  console.log('Load test config:', JSON.stringify(args));
+
+  let summary;
+  if (args.mode === 'single-hotspot') {
+    summary = await runSingleHotspotMode(args);
+  } else if (args.mode === 'many-small') {
+    summary = await runManySmallMode(args);
+  } else if (args.mode === 'mixed') {
+    summary = await runMixedMode(args);
+  } else {
+    throw new Error(`Unknown --mode '${args.mode}'. Use single-hotspot|many-small|mixed.`);
+  }
+
+  printSummary(summary, args);
 }
 
 main().catch((err) => {

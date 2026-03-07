@@ -20,7 +20,15 @@ import kotlin.test.*
  * - Game page access control
  * - Player state after joining
  */
-class SSEEndpointTest {
+class RealtimeEndpointTest {
+    private fun HttpResponse.firstSetCookieValue(name: String): String? =
+        headers
+            .getAll(HttpHeaders.SetCookie)
+            ?.asSequence()
+            ?.map { it.substringBefore(';').split('=', limit = 2) }
+            ?.firstOrNull { it.size == 2 && it[0] == name }
+            ?.get(1)
+
     // ==================== HTMX Redirect Tests ====================
 
     @Test
@@ -130,35 +138,6 @@ class SSEEndpointTest {
         }
 
     @Test
-    fun `chess page exposes realtime transport meta`() =
-        testApplication {
-            application { module() }
-
-            val client =
-                createClient {
-                    install(HttpCookies)
-                    followRedirects = false
-                }
-
-            client.get("/")
-            val createResponse =
-                client.submitForm(
-                    url = "/chess/create",
-                    formParameters = parameters { append("playerName", "MetaHost") },
-                )
-
-            val chessUrl = createResponse.headers["Location"]!!
-            val gameResponse = client.get(chessUrl)
-            val body = gameResponse.bodyAsText()
-
-            val gameId = chessUrl.substringAfterLast("/chess/")
-
-            assertTrue(body.contains("meta name=\"realtime-transport\""))
-
-            ChessGameManager.removeGame(gameId)
-        }
-
-    @Test
     fun `chess websocket endpoint emits ping and update frames`() =
         testApplication {
             application { module() }
@@ -242,6 +221,243 @@ class SSEEndpointTest {
             }
 
             GameManager.removeGame(gameId)
+        }
+
+    @Test
+    fun `marbles websocket reconnect triggers update to other player only`() =
+        testApplication {
+            application { module() }
+
+            val hostClient =
+                createClient {
+                    install(HttpCookies)
+                    install(WebSockets)
+                    followRedirects = false
+                }
+            hostClient.get("/")
+            val createResponse =
+                hostClient.submitForm(
+                    url = "/game/create",
+                    formParameters = parameters { append("playerName", "Host") },
+                )
+            val gameId = createResponse.headers["Location"]!!.substringAfterLast("/game/")
+
+            val joinClient =
+                createClient {
+                    install(HttpCookies)
+                    install(WebSockets)
+                    followRedirects = false
+                }
+            val joinRoot = joinClient.get("/")
+            val joinSession = joinRoot.firstSetCookieValue("user_session") ?: error("No join session cookie")
+            joinClient.submitForm(
+                url = "/game/join",
+                formParameters =
+                    parameters {
+                        append("playerName", "Guest")
+                        append("gameId", gameId)
+                    },
+            )
+
+            val reconnectClient =
+                createClient {
+                    install(WebSockets)
+                    followRedirects = false
+                }
+
+            hostClient.webSocket("/ws/game/$gameId") {
+                var hostSawReconnect = false
+
+                withTimeout(5_000) {
+                    while (true) {
+                        val frame = incoming.receive() as? Frame.Text ?: continue
+                        val text = frame.readText()
+                        if (text.startsWith("__GAME_UPDATE__:")) {
+                            break
+                        }
+                    }
+                }
+
+                reconnectClient.webSocket(
+                    request = {
+                        url("/ws/game/$gameId")
+                        header(HttpHeaders.Cookie, "user_session=$joinSession")
+                    },
+                ) {
+                    // consume initial payload quickly
+                    withTimeout(5_000) {
+                        while (true) {
+                            val frame = incoming.receive() as? Frame.Text ?: continue
+                            if (frame.readText().startsWith("__GAME_UPDATE__:")) break
+                        }
+                    }
+                }
+
+                withTimeout(8_000) {
+                    while (!hostSawReconnect) {
+                        val frame = incoming.receive() as? Frame.Text ?: continue
+                        val text = frame.readText()
+                        if (text.startsWith("__GAME_UPDATE__:") && text.contains("Guest")) {
+                            hostSawReconnect = true
+                        }
+                    }
+                }
+
+                assertTrue(hostSawReconnect)
+            }
+
+            GameManager.removeGame(gameId)
+        }
+
+    @Test
+    fun `chess websocket reconnect triggers update to other player only`() =
+        testApplication {
+            application { module() }
+
+            val hostClient =
+                createClient {
+                    install(HttpCookies)
+                    install(WebSockets)
+                    followRedirects = false
+                }
+            hostClient.get("/")
+            val createResponse =
+                hostClient.submitForm(
+                    url = "/chess/create",
+                    formParameters = parameters { append("playerName", "Host") },
+                )
+            val gameId = createResponse.headers["Location"]!!.substringAfterLast("/chess/")
+
+            val joinClient =
+                createClient {
+                    install(HttpCookies)
+                    install(WebSockets)
+                    followRedirects = false
+                }
+            val joinRoot = joinClient.get("/")
+            val joinSession = joinRoot.firstSetCookieValue("user_session") ?: error("No join session cookie")
+            joinClient.submitForm(
+                url = "/chess/join",
+                formParameters =
+                    parameters {
+                        append("playerName", "Guest")
+                        append("gameId", gameId)
+                    },
+            )
+
+            val reconnectClient =
+                createClient {
+                    install(WebSockets)
+                    followRedirects = false
+                }
+
+            hostClient.webSocket("/ws/chess/$gameId") {
+                var hostSawReconnect = false
+
+                withTimeout(5_000) {
+                    while (true) {
+                        val frame = incoming.receive() as? Frame.Text ?: continue
+                        val text = frame.readText()
+                        if (text.startsWith("__CHESS_UPDATE__:")) {
+                            break
+                        }
+                    }
+                }
+
+                reconnectClient.webSocket(
+                    request = {
+                        url("/ws/chess/$gameId")
+                        header(HttpHeaders.Cookie, "user_session=$joinSession")
+                    },
+                ) {
+                    withTimeout(5_000) {
+                        while (true) {
+                            val frame = incoming.receive() as? Frame.Text ?: continue
+                            if (frame.readText().startsWith("__CHESS_UPDATE__:")) break
+                        }
+                    }
+                }
+
+                withTimeout(8_000) {
+                    while (!hostSawReconnect) {
+                        val frame = incoming.receive() as? Frame.Text ?: continue
+                        val text = frame.readText()
+                        if (text.startsWith("__CHESS_UPDATE__:") && text.contains("Guest")) {
+                            hostSawReconnect = true
+                        }
+                    }
+                }
+
+                assertTrue(hostSawReconnect)
+            }
+
+            ChessGameManager.removeGame(gameId)
+        }
+
+    @Test
+    fun `legacy sse endpoints are not available`() =
+        testApplication {
+            application { module() }
+
+            val client =
+                createClient {
+                    install(HttpCookies)
+                    followRedirects = false
+                }
+
+            client.get("/")
+            val createResponse =
+                client.submitForm(
+                    url = "/game/create",
+                    formParameters = parameters { append("playerName", "NoSseHost") },
+                )
+            val gameId = createResponse.headers["Location"]!!.substringAfterLast("/game/")
+
+            val oldSseResponse = client.get("/game/$gameId/events")
+            assertEquals(HttpStatusCode.NotFound, oldSseResponse.status)
+
+            GameManager.removeGame(gameId)
+        }
+
+    @Test
+    fun `game and chess pages include shared realtime scripts`() =
+        testApplication {
+            application { module() }
+
+            val client =
+                createClient {
+                    install(HttpCookies)
+                    followRedirects = false
+                }
+
+            client.get("/")
+
+            val marblesCreate =
+                client.submitForm(
+                    url = "/game/create",
+                    formParameters = parameters { append("playerName", "ScriptHost1") },
+                )
+            val marblesUrl = marblesCreate.headers["Location"]!!
+            val marblesBody = client.get(marblesUrl).bodyAsText()
+
+            val chessCreate =
+                client.submitForm(
+                    url = "/chess/create",
+                    formParameters = parameters { append("playerName", "ScriptHost2") },
+                )
+            val chessUrl = chessCreate.headers["Location"]!!
+            val chessBody = client.get(chessUrl).bodyAsText()
+
+            assertTrue(marblesBody.contains("/static/realtime.js"))
+            assertTrue(marblesBody.contains("/static/ui-shared.js"))
+            assertTrue(marblesBody.contains("/static/game.js"))
+
+            assertTrue(chessBody.contains("/static/realtime.js"))
+            assertTrue(chessBody.contains("/static/ui-shared.js"))
+            assertTrue(chessBody.contains("/static/chess.js"))
+
+            GameManager.removeGame(marblesUrl.substringAfterLast("/game/"))
+            ChessGameManager.removeGame(chessUrl.substringAfterLast("/chess/"))
         }
 
     @Test
@@ -497,37 +713,6 @@ class SSEEndpointTest {
                 response.bodyAsText().contains("Game not found") ||
                     response.bodyAsText().contains("Spiel nicht gefunden"),
             )
-        }
-
-    // ==================== SSE Connection Tests ====================
-
-    @Test
-    fun `SSE endpoint requires player to be in game`() =
-        testApplication {
-            application { module() }
-
-            // Create game with one player
-            val game = GameManager.createGame("creator-session")
-            game.addPlayer("creator-session", "Creator", "en")
-
-            try {
-                val client =
-                    createClient {
-                        install(HttpCookies)
-                    }
-
-                // Get session (different from creator)
-                client.get("/")
-
-                // Try to connect to SSE without being a player
-                // The SSE endpoint should return early (empty response)
-                val response = client.get("/game/${game.id}/events")
-
-                // SSE endpoint returns empty/closes when player not in game
-                assertEquals(HttpStatusCode.OK, response.status)
-            } finally {
-                GameManager.removeGame(game.id)
-            }
         }
 
     @Test

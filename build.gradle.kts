@@ -26,7 +26,6 @@ repositories {
 
 dependencies {
     implementation("io.ktor:ktor-server-core")
-    implementation("io.ktor:ktor-server-sse")
     implementation("io.ktor:ktor-server-websockets")
     implementation("io.ktor:ktor-server-host-common")
     implementation("io.ktor:ktor-server-html-builder")

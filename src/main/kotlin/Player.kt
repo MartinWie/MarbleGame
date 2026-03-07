@@ -1,11 +1,20 @@
 package de.mw
 
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /** Grace period for disconnected players before they are removed from the game (15 seconds). */
 const val DISCONNECT_GRACE_PERIOD_MS = 15_000L
+
+sealed interface PlayerOutboundSignal {
+    data object Flush : PlayerOutboundSignal
+
+    data object ConnectionCheck : PlayerOutboundSignal
+}
+
+private const val PLAYER_SIGNAL_CHANNEL_CAPACITY = 1
 
 /**
  * Represents a player in the Marble Game.
@@ -14,7 +23,7 @@ const val DISCONNECT_GRACE_PERIOD_MS = 15_000L
  * - A unique session ID (from their browser session)
  * - A display name
  * - A marble count (starts at 10, game ends when reaching 0)
- * - Connection state tracking for SSE (Server-Sent Events)
+ * - Connection state tracking for realtime sessions
  * - A channel for receiving game state updates
  * - A language preference for UI translations
  *
@@ -26,7 +35,7 @@ const val DISCONNECT_GRACE_PERIOD_MS = 15_000L
  * @property name Display name shown to other players
  * @property marbles Current marble count (0 = spectator)
  * @property currentGuess The player's guess for the current round (EVEN or ODD)
- * @property channel Coroutine channel for sending SSE updates to this player
+ * @property channel Coroutine channel for signaling outbound updates to this player
  * @property lang Language code for UI translations (e.g., "en", "de")
  */
 class Player(
@@ -34,9 +43,27 @@ class Player(
     var name: String,
     var marbles: Int = 10,
     var currentGuess: Guess? = null,
-    val channel: Channel<String> = Channel(Channel.UNLIMITED),
+    val channel: Channel<PlayerOutboundSignal> =
+        Channel(
+            capacity = PLAYER_SIGNAL_CHANNEL_CAPACITY,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST,
+        ),
     var lang: String = "en",
 ) {
+    private val outboundLock = Any()
+
+    @Volatile
+    private var pendingLatestStateHtml: String? = null
+
+    @Volatile
+    private var pendingTerminalStateHtml: String? = null
+
+    @Volatile
+    private var pendingNonTerminalVersion: Long = 0L
+
+    @Volatile
+    private var pendingTerminalVersion: Long = 0L
+
     /** Thread-safe connection state tracking. */
     private val _connected = AtomicBoolean(false)
 
@@ -44,7 +71,7 @@ class Player(
      * Connection ID to handle race conditions during reconnect.
      *
      * When a player reconnects (e.g., page refresh), there's a brief period where
-     * both the old and new SSE connections exist. This ID ensures that when the
+     * both the old and new realtime connections exist. This ID ensures that when the
      * old connection's cleanup code runs, it doesn't mark the player as disconnected
      * if a new connection has already been established.
      */
@@ -53,10 +80,10 @@ class Player(
         private set
 
     /**
-     * Starts a new SSE connection for this player.
+     * Starts a new realtime connection for this player.
      *
      * Generates a new connection ID and marks the player as connected.
-     * The returned ID should be stored by the SSE handler and passed to
+     * The returned ID should be stored by the realtime handler and passed to
      * [endConnection] when the connection closes.
      *
      * @return The new connection ID
@@ -73,8 +100,69 @@ class Player(
         private val connectionIdCounter = AtomicLong(0L)
     }
 
+    fun enqueueState(
+        html: String,
+        terminal: Boolean,
+        version: Long,
+    ) {
+        synchronized(outboundLock) {
+            if (terminal) {
+                if (version < pendingTerminalVersion) {
+                    return
+                }
+                if (pendingTerminalStateHtml == html) {
+                    return
+                }
+                pendingTerminalStateHtml = html
+                pendingTerminalVersion = version
+                pendingLatestStateHtml = null
+                pendingNonTerminalVersion = 0L
+            } else {
+                if (pendingTerminalStateHtml != null) {
+                    return
+                }
+                if (version < pendingNonTerminalVersion) {
+                    return
+                }
+                if (pendingLatestStateHtml == html) {
+                    return
+                }
+                pendingLatestStateHtml = html
+                pendingNonTerminalVersion = version
+            }
+        }
+        val result = channel.trySend(PlayerOutboundSignal.Flush)
+        if (result.isFailure && !channel.isClosedForSend) {
+            // Best effort signal queue; state remains pending and may be sent by next signal cycle.
+        }
+    }
+
+    fun enqueueConnectionCheck() {
+        channel.trySend(PlayerOutboundSignal.ConnectionCheck)
+    }
+
+    fun pollPendingStateHtml(): String? =
+        synchronized(outboundLock) {
+            pendingTerminalStateHtml?.also { pendingTerminalStateHtml = null }
+                ?: pendingLatestStateHtml?.also { pendingLatestStateHtml = null }
+        }
+
+    fun clearPendingStateHtml() {
+        synchronized(outboundLock) {
+            pendingTerminalStateHtml = null
+            pendingLatestStateHtml = null
+            pendingTerminalVersion = 0L
+            pendingNonTerminalVersion = 0L
+        }
+    }
+
+    fun hasPendingStateHtml(): Boolean =
+        synchronized(outboundLock) {
+            pendingTerminalStateHtml != null || pendingLatestStateHtml != null
+        }
+
     /**
-     * Ends an SSE connection for this player.
+     * Ends a realtime connection for this player.
      *
      * Only marks the player as disconnected if the provided [connectionId]
      * matches the current connection. This prevents race conditions where
@@ -89,7 +177,7 @@ class Player(
     }
 
     /**
-     * Whether the player is currently connected via SSE.
+     * Whether the player is currently connected via realtime transport.
      *
      * When set to `true`, clears the [disconnectedAt] timestamp.
      * When set to `false`, records the current time as [disconnectedAt]

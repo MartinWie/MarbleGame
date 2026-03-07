@@ -13,10 +13,9 @@ fun HTML.renderChessPage(
         lang = lang,
         includeHtmx = true,
         containerClasses = "container chess-container",
-        extraHead = {
-            meta(name = "realtime-transport", content = RealtimeConfig.transportMode)
-        },
         extraBodyContent = {
+            script(src = "/static/realtime.js") {}
+            script(src = "/static/ui-shared.js") {}
             script(src = "/static/chess.js") {}
             script {
                 unsafe { +"initChess('${game.id}');" }
@@ -125,29 +124,34 @@ fun renderChessState(
                 game.allPlayers.forEach { player ->
                     val disconnectedClass = if (!player.connected && player.sessionId != sessionId) " disconnected" else ""
                     div("player-card$disconnectedClass") {
+                        val showConnectionState = !player.connected && player.sessionId != sessionId
                         val label =
                             when (game.colorFor(player.sessionId)) {
                                 ChessColor.WHITE -> "chess.color.white".t(lang)
                                 ChessColor.BLACK -> "chess.color.black".t(lang)
                                 null -> "players.spectator".t(lang)
                             }
-                        div("player-name") {
-                            +player.name.escapeHtml()
-                            if (player.sessionId == sessionId) {
-                                +" ${"players.you".t(lang)}"
-                            }
-                        }
-                        div("player-status") { +label }
-                        if (!player.connected && player.sessionId != sessionId) {
-                            val remaining = player.gracePeriodRemainingSeconds()
-                            if (remaining > 0) {
-                                div("player-countdown") {
-                                    attributes["data-seconds"] = remaining.toString()
-                                    +"${"players.reconnecting".t(lang)} "
-                                    span("countdown-timer") { +"${remaining}s" }
+                        div("player-main") {
+                            div("player-name") {
+                                +player.name.escapeHtml()
+                                if (player.sessionId == sessionId) {
+                                    +" ${"players.you".t(lang)}"
                                 }
-                            } else {
-                                div("player-disconnected") { +"players.disconnected".t(lang) }
+                            }
+                            div("player-status") { +label }
+                        }
+                        div("player-connection-state${if (showConnectionState) " active" else ""}") {
+                            if (showConnectionState) {
+                                val remaining = player.gracePeriodRemainingSeconds()
+                                if (remaining > 0) {
+                                    div("player-countdown") {
+                                        attributes["data-seconds"] = remaining.toString()
+                                        +"${"players.reconnecting".t(lang)} "
+                                        span("countdown-timer") { +"${remaining}s" }
+                                    }
+                                } else {
+                                    div("player-disconnected") { +"players.disconnected".t(lang) }
+                                }
                             }
                         }
                     }
@@ -183,19 +187,6 @@ fun renderChessState(
                             yourColor == game.turn -> p("turn-line turn-your") { +"chess.turn.yours".t(lang) }
                             else -> p("turn-line turn-wait") { +"chess.turn.wait".t(lang, turnText) }
                         }
-                        if (game.timedModeEnabled) {
-                            p("hint chess-clock-line") {
-                                span("clock-white") {
-                                    attributes["data-prefix"] = "chess.color.white".t(lang)
-                                    +"${"chess.color.white".t(lang)}: ${formatClock(game.whiteClockSecondsRemaining())}"
-                                }
-                                +" • "
-                                span("clock-black") {
-                                    attributes["data-prefix"] = "chess.color.black".t(lang)
-                                    +"${"chess.color.black".t(lang)}: ${formatClock(game.blackClockSecondsRemaining())}"
-                                }
-                            }
-                        }
                         p("check-alert") { +(if (checkedKingSquare != null) "chess.check".t(lang) else "") }
 
                         if (yourColor != null) {
@@ -209,6 +200,10 @@ fun renderChessState(
                 ChessPhase.GAME_OVER -> {
                     div("chess-status-content game-over-status") {
                         val winner = game.winner()
+                        val loser =
+                            game.players.entries
+                                .firstOrNull { (sid, _) -> game.colorFor(sid) != null && sid != game.winnerSessionId }
+                                ?.value
                         if (winner != null) {
                             p("winner-text") { +"chess.winner".t(lang, winner.name) }
                         } else if (game.endReason == "stalemate") {
@@ -220,6 +215,7 @@ fun renderChessState(
                                 "checkmate" -> "chess.gameOver.checkmate".t(lang)
                                 "stalemate" -> "chess.gameOver.stalemateHint".t(lang)
                                 "timeout" -> "chess.gameOver.timeout".t(lang)
+                                "surrender" -> "chess.gameOver.surrender".t(lang, loser?.name ?: "")
                                 else -> null
                             }
                         if (reasonText != null) {
@@ -249,7 +245,7 @@ fun renderChessState(
             ChessPhase.IN_PROGRESS -> {
                 val checkedKingSquare = game.checkedKingSquare()
                 div("chess-board-stage chess-board-stage-outside") {
-                    renderBoard(game, yourColor ?: ChessColor.WHITE, yourColor, checkedKingSquare, true)
+                    renderBoardWithMeta(game, sessionId, yourColor, checkedKingSquare, lang)
                 }
             }
 
@@ -261,7 +257,7 @@ fun renderChessState(
                         null
                     }
                 div("chess-board-stage chess-board-stage-outside") {
-                    renderBoard(game, yourColor ?: ChessColor.WHITE, yourColor, checkmatedKingSquare, true)
+                    renderBoardWithMeta(game, sessionId, yourColor, checkmatedKingSquare, lang)
                 }
             }
 
@@ -272,6 +268,132 @@ fun renderChessState(
 
         if (you != null && yourColor == null) {
             div("your-status") { span { +"chess.you.spectator".t(lang) } }
+        }
+    }
+}
+
+private fun FlowContent.renderBoardWithMeta(
+    game: ChessGame,
+    sessionId: String,
+    yourColor: ChessColor?,
+    markedKingSquare: String?,
+    lang: String,
+) {
+    val perspective = yourColor ?: ChessColor.WHITE
+    val topSessionId = if (perspective == ChessColor.WHITE) game.blackSessionId else game.whiteSessionId
+    val bottomSessionId = if (perspective == ChessColor.WHITE) game.whiteSessionId else game.blackSessionId
+    val topColor = if (perspective == ChessColor.WHITE) ChessColor.BLACK else ChessColor.WHITE
+    val bottomColor = if (perspective == ChessColor.WHITE) ChessColor.WHITE else ChessColor.BLACK
+
+    fun sideName(sid: String?): String = game.players[sid]?.name ?: "-"
+
+    fun sideLabelPrefix(
+        color: ChessColor,
+        isBottom: Boolean,
+    ): String =
+        if (yourColor == null) {
+            if (color == ChessColor.WHITE) "chess.color.white".t(lang) else "chess.color.black".t(lang)
+        } else {
+            if (isBottom) "chess.board.you".t(lang) else "chess.board.enemy".t(lang)
+        }
+
+    fun sideLabel(
+        color: ChessColor,
+        sid: String?,
+        isBottom: Boolean,
+    ): String = "${sideLabelPrefix(color, isBottom)} ${sideName(sid)}"
+
+    val topClockSeconds =
+        when {
+            !game.timedModeEnabled -> 0
+            topSessionId == game.whiteSessionId -> game.whiteClockSecondsRemaining()
+            topSessionId == game.blackSessionId -> game.blackClockSecondsRemaining()
+            else -> 0
+        }
+    val bottomClockSeconds =
+        when {
+            !game.timedModeEnabled -> 0
+            bottomSessionId == game.whiteSessionId -> game.whiteClockSecondsRemaining()
+            bottomSessionId == game.blackSessionId -> game.blackClockSecondsRemaining()
+            else -> 0
+        }
+
+    val topClockSide =
+        when {
+            topSessionId == game.whiteSessionId -> "white"
+            topSessionId == game.blackSessionId -> "black"
+            else -> if (perspective == ChessColor.WHITE) "black" else "white"
+        }
+    val bottomClockSide =
+        when {
+            bottomSessionId == game.whiteSessionId -> "white"
+            bottomSessionId == game.blackSessionId -> "black"
+            else -> if (perspective == ChessColor.WHITE) "white" else "black"
+        }
+
+    div("chess-board-meta chess-board-meta-enemy") {
+        span("board-side-name") { +sideLabel(topColor, topSessionId, isBottom = false) }
+        if (game.timedModeEnabled) {
+            span("board-side-clock clock-enemy") {
+                attributes["data-seconds"] = topClockSeconds.toString()
+                attributes["data-clock-side"] = topClockSide
+                +formatClock(topClockSeconds)
+            }
+        }
+    }
+
+    renderBoard(game, perspective, yourColor, markedKingSquare, true)
+
+    div("chess-board-meta chess-board-meta-own") {
+        span("board-side-name") { +sideLabel(bottomColor, bottomSessionId ?: sessionId, isBottom = true) }
+        if (yourColor != null && game.phase == ChessPhase.IN_PROGRESS) {
+            button(classes = "btn btn-secondary header-action-btn header-action-btn--icon chess-surrender-btn") {
+                id = "surrender-btn"
+                attributes["type"] = "button"
+                attributes["aria-label"] = "button.surrender".t(lang)
+                attributes["title"] = "button.surrender".t(lang)
+                span("surrender-icon") {
+                    unsafe {
+                        +
+                            """
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                              <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
+                              <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708"/>
+                            </svg>
+                            """.trimIndent()
+                    }
+                }
+            }
+        }
+        if (game.timedModeEnabled) {
+            span("board-side-clock clock-own") {
+                attributes["data-seconds"] = bottomClockSeconds.toString()
+                attributes["data-clock-side"] = bottomClockSide
+                +formatClock(bottomClockSeconds)
+            }
+        }
+        if (yourColor != null && game.phase == ChessPhase.IN_PROGRESS) {
+            dialog(classes = "qr-modal surrender-modal") {
+                id = "surrender-modal"
+                div("qr-modal-box surrender-modal-box") {
+                    p("surrender-modal-title") { +"button.surrender".t(lang) }
+                    p("surrender-modal-copy") { +"chess.surrender.confirm".t(lang) }
+                    div("surrender-modal-actions") {
+                        button(classes = "btn btn-secondary") {
+                            id = "surrender-cancel-btn"
+                            attributes["type"] = "button"
+                            +"button.cancel".t(lang)
+                        }
+                        button(classes = "btn btn-primary") {
+                            id = "surrender-confirm-btn"
+                            attributes["type"] = "button"
+                            hxPost("/chess/${game.id}/surrender")
+                            hxSwap(HxSwapOption.NONE)
+                            +"button.surrender".t(lang)
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -299,7 +421,7 @@ private fun FlowContent.renderMoveForm(
     }
 }
 
-private fun DIV.renderBoard(
+private fun FlowContent.renderBoard(
     game: ChessGame,
     perspective: ChessColor,
     viewerColor: ChessColor?,

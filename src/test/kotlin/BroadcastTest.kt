@@ -67,27 +67,21 @@ class BroadcastTest {
     fun `player channel receives broadcast messages`() =
         runTest {
             val game = createGameWithPlayers("Alice", "Bob")
-
             game.broadcastToAllConnected { _, sessionId, _ -> "Hello $sessionId" }
 
-            // Check that messages were queued to channels
-            val aliceMessage =
-                game.players["creator"]!!
-                    .channel
-                    .tryReceive()
-                    .getOrNull()
-            val bobMessage =
-                game.players["player1"]!!
-                    .channel
-                    .tryReceive()
-                    .getOrNull()
+            val alice = game.players["creator"]!!
+            val bob = game.players["player1"]!!
 
-            assertEquals("Hello creator", aliceMessage)
-            assertEquals("Hello player1", bobMessage)
+            val firstSignal = alice.channel.tryReceive().getOrNull()
+            val secondSignal = bob.channel.tryReceive().getOrNull()
+            assertEquals(PlayerOutboundSignal.Flush, firstSignal)
+            assertEquals(PlayerOutboundSignal.Flush, secondSignal)
+            assertEquals("Hello creator", alice.pollPendingStateHtml())
+            assertEquals("Hello player1", bob.pollPendingStateHtml())
         }
 
     @Test
-    fun `multiple broadcasts queue up in channel`() =
+    fun `multiple broadcasts are coalesced to latest state in queue`() =
         runTest {
             val game = createGameWithPlayers("Alice")
 
@@ -95,12 +89,12 @@ class BroadcastTest {
             game.broadcastToAllConnected { _, _, _ -> "Message 2" }
             game.broadcastToAllConnected { _, _, _ -> "Message 3" }
 
-            val channel = game.players["creator"]!!.channel
+            val player = game.players["creator"]!!
 
-            assertEquals("Message 1", channel.tryReceive().getOrNull())
-            assertEquals("Message 2", channel.tryReceive().getOrNull())
-            assertEquals("Message 3", channel.tryReceive().getOrNull())
-            assertNull(channel.tryReceive().getOrNull()) // No more messages
+            assertEquals(PlayerOutboundSignal.Flush, player.channel.tryReceive().getOrNull())
+            assertEquals("Message 3", player.pollPendingStateHtml())
+            assertNull(player.pollPendingStateHtml())
+            assertNull(player.channel.tryReceive().getOrNull())
         }
 
     @Test

@@ -1,6 +1,6 @@
 # Marble Game
 
-A real-time multiplayer marble game inspired by the Korean drama "Squid Game". Built with Kotlin/Ktor using Server-Sent Events (SSE) for instant updates.
+A real-time multiplayer marble game inspired by the Korean drama "Squid Game". Built with Kotlin/Ktor using WebSockets for instant updates.
 
 ## Game Rules
 
@@ -15,7 +15,7 @@ A real-time multiplayer marble game inspired by the Korean drama "Squid Game". B
 
 ## Features
 
-- Real-time multiplayer via SSE (Server-Sent Events)
+- Real-time multiplayer via WebSockets
 - Mobile-first responsive design
 - Shareable game links with unique codes
 - Auto-reconnect on connection loss
@@ -25,7 +25,7 @@ A real-time multiplayer marble game inspired by the Korean drama "Squid Game". B
 ## Tech Stack
 
 - **Backend**: Kotlin + Ktor 3.x
-- **Real-time**: SSE with 5-second keepalive pings
+- **Real-time**: WebSockets with server heartbeat pings
 - **Frontend**: HTMX + vanilla JavaScript
 - **Templating**: kotlinx.html (server-side)
 - **Styling**: Custom CSS with dark theme
@@ -142,14 +142,13 @@ npm run test:e2e:debug
 
 **Test categories:**
 - **Fast tests (21)**: Homepage, game creation, joining, multiplayer flow, static pages
-- **Slow tests (4)**: Host disconnect transfer, player disconnect during game, winner determination, host disconnect on game over (require gameplay/SSE timeouts)
+- **Slow tests (4)**: Host disconnect transfer, player disconnect during game, winner determination, host disconnect on game over (require gameplay/grace period timeouts)
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `POSTHOG_ENABLED` | `true` | Set to `false` to disable PostHog analytics and cookie banner |
-| `REALTIME_TRANSPORT` | `auto` | Realtime transport mode metadata for clients (currently always `auto` and WS+SSE are both active; not used as runtime switch) |
 | `REALTIME_ALLOWED_ORIGINS` | same-origin | Optional comma-separated WS Origin allowlist (e.g. `https://example.com,https://staging.example.com`) |
 
 Note: server-side maintenance is now ticker-driven (disconnect expiry, marbles round auto-advance, chess clocks, chess auto-restart). The old polling endpoints were removed.
@@ -169,7 +168,11 @@ src/main/kotlin/
 ├── GameManager.kt    # Singleton managing all active games (with auto-cleanup)
 ├── GameRenderer.kt   # HTML rendering functions for game UI
 ├── Player.kt         # Player state, connection handling, grace period
-├── Routing.kt        # HTTP endpoints, SSE, form handling
+├── Routing.kt        # Routing composition and WS setup
+├── RoutePages.kt     # Home/imprint/privacy routes
+├── RouteMarbles.kt   # Marbles game routes and WS endpoint
+├── RouteChess.kt     # Chess game routes and WS endpoint
+├── RouteShared.kt    # QR/static/icon shared routes
 └── Templating.kt     # HTML templating configuration
 
 src/main/resources/
@@ -177,7 +180,9 @@ src/main/resources/
 ├── logback.xml       # Logging configuration
 └── static/
     ├── htmx.min.js   # HTMX library (served locally)
-    ├── index.html    # SSE demo page (legacy)
+    ├── realtime.js   # Shared WS reconnect helpers
+    ├── ui-shared.js  # Shared toast/share/sound helpers
+    ├── index.html    # legacy page with home link
     └── style.css     # Mobile-first responsive styles
 
 e2e/                  # Playwright E2E tests
@@ -192,7 +197,7 @@ e2e/                  # Playwright E2E tests
 | `Game.kt` | ~600 | Core game logic, phases, marble distribution |
 | `GameManager.kt` | ~120 | Thread-safe game registry with TTL-based cleanup |
 | `GameRenderer.kt` | ~500 | Server-side HTML rendering with kotlinx.html |
-| `Routing.kt` | ~550 | HTTP routes, SSE endpoints, form handlers |
+| `Routing.kt` | ~550 | HTTP routes, WebSocket endpoints, form handlers |
 | `Application.kt` | ~40 | Application entry point and session config |
 
 ## Production Notes
@@ -205,17 +210,15 @@ e2e/                  # Playwright E2E tests
 
 ### Scalability
 - Games auto-cleanup after inactivity (1h for finished, 4h for abandoned)
-- Each player has a dedicated SSE channel for broadcasting
+- Each player has a bounded outbound signal queue with coalesced state delivery
 - Connection grace period (15s) handles brief disconnects
 
 ### TODO
 
-- Own clock below board and Enemy above, next to name(Maybe show the player name there, also make sure the player name is limited to 15 chars(everywhere))
-- Surrender function(below the board, maybe next to clock and name)(only shows when you are actually playing, not spectating)
-- Game creation visual: second toggle text length seems to mess with the toggle visual width broken on phonen(make sure the toggle is not affected by the text length), 
 - Pfeile(zeichnen) mit rechtsclick auf feld und dann auf anderem feld los lassen zum einzeichnen(nur relevant für desktop)(like normal chess plattforms)
 - felder bezeichnungen einblenden A1, etc, 
 - option to replay the moves (züge zurück gehen!)(not really go back, but to have the option to see how the board looked like x steps back)
+- Setup posthog feedback or a own small feedback table with option on the page 
 - Start with redis setup to avoid loosing game state on server restart
 - Analytics against chess engine?
 - Split chess and marbles?
@@ -225,9 +228,6 @@ e2e/                  # Playwright E2E tests
 Target: scale from current single-instance setup to roughly 100x more concurrent games (with spectators) in both Marble and Chess modes, while keeping move latency and reconnect behavior stable.
 
 - [ ] Define performance SLOs (e.g., p95 move propagation latency, reconnect success rate, max memory per connection)
-- [ ] Add repeatable load tests for SSE fanout and active move traffic (baseline + stress profiles)
-- [ ] Replace `Channel.UNLIMITED` with bounded queues and explicit backpressure strategy
-- [ ] Define backpressure policy (e.g., drop stale intermediate updates but always deliver latest state and terminal state)
 - [ ] Reduce per-update payload size (state deltas instead of full HTML where possible)
 - [ ] Coalesce/batch rapid broadcasts in a short debounce window to cap update frequency under burst
 - [ ] Externalize authoritative game/session state (or enforce strict sticky sessions with documented failover behavior)

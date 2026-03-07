@@ -3,6 +3,7 @@ package de.mw
 import org.slf4j.LoggerFactory
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 
 private val logger = LoggerFactory.getLogger(Game::class.java)
@@ -106,6 +107,8 @@ class Game(
     var lastActivityAt: Long = System.currentTimeMillis()
         private set
 
+    private val stateVersion = AtomicLong(0L)
+
     /**
      * Session ID of the current game creator/host.
      *
@@ -117,6 +120,8 @@ class Game(
 
     /** All players who have joined (including disconnected ones). */
     val players = ConcurrentHashMap<String, Player>()
+
+    private val playerSignalVersions = ConcurrentHashMap<String, Long>()
 
     /** Current phase of the game. Thread-safe via @Volatile. */
     @Volatile
@@ -218,7 +223,8 @@ class Game(
         name: String,
         lang: String = "en",
     ): Player {
-        val player = Player(sessionId, name, lang = lang)
+        val clampedName = name.take(MAX_PLAYER_NAME_LENGTH)
+        val player = Player(sessionId, clampedName, lang = lang)
         player.marbles = 0 // Start as spectator
         players[sessionId] = player
         if (sessionId !in pendingPlayerOrder && sessionId !in playerOrder) {
@@ -260,7 +266,14 @@ class Game(
         lang: String = "en",
     ): Player {
         touch()
-        val player = Player(sessionId, name, lang = lang)
+        val clampedName = name.take(MAX_PLAYER_NAME_LENGTH)
+        val existing = players[sessionId]
+        if (existing != null) {
+            existing.name = clampedName
+            existing.lang = lang
+            return existing
+        }
+        val player = Player(sessionId, clampedName, lang = lang)
         players[sessionId] = player
         if (sessionId !in playerOrder) {
             playerOrder.add(sessionId)
@@ -276,6 +289,7 @@ class Game(
     @Synchronized
     fun removePlayer(sessionId: String) {
         players.remove(sessionId)
+        playerSignalVersions.remove(sessionId)
         playerOrder.remove(sessionId)
         if (currentPlayerIndex >= playerOrder.size && playerOrder.isNotEmpty()) {
             currentPlayerIndex = 0
@@ -697,18 +711,35 @@ class Game(
 
     // ==================== Broadcasting ====================
 
+    private fun enqueueRenderedState(
+        player: Player,
+        renderState: (Game, String, String) -> String,
+    ) {
+        val terminal = phase == GamePhase.GAME_OVER
+        val globalVersion = stateVersion.incrementAndGet()
+        val version = playerSignalVersions.merge(player.sessionId, globalVersion) { old, _ -> old + 1 } ?: globalVersion
+        val html = renderState(this, player.sessionId, player.lang)
+        player.enqueueState(html, terminal = terminal, version = version)
+    }
+
     /**
      * Sends updated game state to all connected players.
      *
      * @param renderState Function to render HTML for a specific player's view (game, sessionId, lang)
      */
     fun broadcastToAllConnected(renderState: (Game, String, String) -> String) {
-        val connectedPlayers = players.values.filter { it.connected }
+        players.values
+            .filter { it.connected }
+            .forEach { player -> enqueueRenderedState(player, renderState) }
+    }
 
-        connectedPlayers.forEach { player ->
-            val html = renderState(this, player.sessionId, player.lang)
-            player.channel.trySend(html)
-        }
+    fun broadcastToConnectedExcept(
+        excludedSessionId: String,
+        renderState: (Game, String, String) -> String,
+    ) {
+        players.values
+            .filter { it.connected && it.sessionId != excludedSessionId }
+            .forEach { player -> enqueueRenderedState(player, renderState) }
     }
 
     /**
@@ -768,8 +799,10 @@ class Game(
     @Synchronized
     fun cleanup() {
         players.values.forEach { player ->
+            player.clearPendingStateHtml()
             runCatching { player.channel.close() }
         }
+        playerSignalVersions.clear()
         logger.debug("Game {} cleaned up, closed {} player channels", id, players.size)
     }
 }

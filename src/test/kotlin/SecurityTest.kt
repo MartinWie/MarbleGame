@@ -21,8 +21,8 @@ class SecurityTest {
 
         game.addPlayer("creator", maliciousName)
 
-        // The name is stored as-is (escaping happens at render time)
-        assertEquals(maliciousName, game.players["creator"]?.name)
+        // The name is stored unescaped (escaping happens at render time), but clamped to max length.
+        assertEquals(maliciousName.take(MAX_PLAYER_NAME_LENGTH), game.players["creator"]?.name)
     }
 
     @Test
@@ -32,7 +32,7 @@ class SecurityTest {
 
         game.addPlayer("creator", specialName)
 
-        assertEquals(specialName, game.players["creator"]?.name)
+        assertEquals(specialName.take(MAX_PLAYER_NAME_LENGTH), game.players["creator"]?.name)
     }
 
     @Test
@@ -43,7 +43,7 @@ class SecurityTest {
 
         game.addPendingPlayer("pending1", maliciousName)
 
-        assertEquals(maliciousName, game.players["pending1"]?.name)
+        assertEquals(maliciousName.take(MAX_PLAYER_NAME_LENGTH), game.players["pending1"]?.name)
     }
 
     @Test
@@ -58,9 +58,9 @@ class SecurityTest {
 
         val result = game.resolveRound()
 
-        // Placer name is stored as-is; escaping happens at render time
+        // Placer name is stored unescaped; escaping happens at render time.
         assertNotNull(result)
-        assertEquals(maliciousName, result.placerName)
+        assertEquals(maliciousName.take(MAX_PLAYER_NAME_LENGTH), result.placerName)
     }
 
     @Test
@@ -76,7 +76,7 @@ class SecurityTest {
         val result = game.resolveRound()
 
         assertNotNull(result)
-        assertTrue(result.winners.contains(maliciousName))
+        assertTrue(result.winners.contains(maliciousName.take(MAX_PLAYER_NAME_LENGTH)))
     }
 
     @Test
@@ -92,6 +92,6 @@ class SecurityTest {
         val result = game.resolveRound()
 
         assertNotNull(result)
-        assertTrue(result.losers.contains(maliciousName))
+        assertTrue(result.losers.contains(maliciousName.take(MAX_PLAYER_NAME_LENGTH)))
     }
 }

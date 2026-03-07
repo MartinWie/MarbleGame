@@ -4,6 +4,7 @@ import org.slf4j.LoggerFactory
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 
 private val chessLogger = LoggerFactory.getLogger(ChessGame::class.java)
@@ -37,6 +38,7 @@ class ChessGame(
         const val INITIAL_CLOCK_SECONDS = 300
         const val MIN_CLOCK_SECONDS = 60
         const val MAX_CLOCK_SECONDS = 3600
+        const val WHITE_FIRST_MOVE_GRACE_MS = 10_000L
     }
 
     private val initialClockMs: Long = (initialClockSeconds.coerceIn(MIN_CLOCK_SECONDS, MAX_CLOCK_SECONDS) * 1000L)
@@ -47,12 +49,15 @@ class ChessGame(
     var lastActivityAt: Long = System.currentTimeMillis()
         private set
 
+    private val stateVersion = AtomicLong(0L)
+
     var creatorSessionId: String = creatorSessionId
         private set
 
     val players = ConcurrentHashMap<String, Player>()
     private val playerOrder = CopyOnWriteArrayList<String>()
     private val colorAssignments = ConcurrentHashMap<String, ChessColor>()
+    private val playerSignalVersions = ConcurrentHashMap<String, Long>()
 
     @Volatile
     var phase: ChessPhase = ChessPhase.WAITING_FOR_PLAYERS
@@ -101,6 +106,9 @@ class ChessGame(
 
     @Volatile
     private var clockStarted: Boolean = false
+
+    @Volatile
+    private var gameStartedAt: Long? = null
 
     private val kingMoved = ConcurrentHashMap<ChessColor, Boolean>()
     private val rookMoved = ConcurrentHashMap<String, Boolean>()
@@ -154,16 +162,17 @@ class ChessGame(
         lang: String = "en",
     ): Player {
         touch()
+        val clampedName = name.take(MAX_PLAYER_NAME_LENGTH)
 
         val existing = players[sessionId]
         if (existing != null) {
-            existing.name = name
+            existing.name = clampedName
             existing.lang = lang
             return existing
         }
 
         val shouldPlay = colorAssignments.size < 2
-        val player = Player(sessionId = sessionId, name = name, marbles = if (shouldPlay) 1 else 0, lang = lang)
+        val player = Player(sessionId = sessionId, name = clampedName, marbles = if (shouldPlay) 1 else 0, lang = lang)
         players[sessionId] = player
         playerOrder.add(sessionId)
 
@@ -348,6 +357,22 @@ class ChessGame(
     }
 
     @Synchronized
+    fun surrender(sessionId: String): Boolean {
+        touch()
+        if (phase != ChessPhase.IN_PROGRESS) return false
+        val surrenderColor = colorAssignments[sessionId] ?: return false
+        val winner = colorAssignments.entries.firstOrNull { it.value != surrenderColor }?.key ?: return false
+
+        winnerSessionId = winner
+        endReason = "surrender"
+        phase = ChessPhase.GAME_OVER
+        turnStartedAt = null
+        clockStarted = false
+        scheduleAutoRestart(10)
+        return true
+    }
+
+    @Synchronized
     fun validateMoveError(
         sessionId: String,
         from: String,
@@ -372,7 +397,10 @@ class ChessGame(
         endReason = null
         lastMove = null
         lastMoveMeta = null
+        resetPlayerClocks()
+        turnStartedAt = null
         clockStarted = false
+        gameStartedAt = null
         autoRestartAt = null
 
         colorAssignments.clear()
@@ -417,6 +445,9 @@ class ChessGame(
     @Synchronized
     fun checkTurnTimeout(): Boolean {
         if (!timedModeEnabled || phase != ChessPhase.IN_PROGRESS) return false
+        if (!clockStarted) {
+            maybeStartClockAfterWhiteGracePeriod()
+        }
         if (!clockStarted) return false
         val remaining = currentTurnRemainingMs()
         if (remaining > 0L) return false
@@ -514,22 +545,52 @@ class ChessGame(
     fun clockStarted(): Boolean = clockStarted
 
     @Synchronized
-    fun applyTurnClockTick() {
-        if (!timedModeEnabled || phase != ChessPhase.IN_PROGRESS) return
-        if (!clockStarted) return
+    fun applyTurnClockTick(): Boolean {
+        if (!timedModeEnabled || phase != ChessPhase.IN_PROGRESS) return false
+        val wasClockStarted = clockStarted
+        if (!clockStarted) {
+            maybeStartClockAfterWhiteGracePeriod()
+        }
+        if (!clockStarted) return false
         updateTurnDeadline()
+        return !wasClockStarted && clockStarted
+    }
+
+    private fun enqueueRenderedState(
+        player: Player,
+        renderState: (ChessGame, String, String) -> String,
+    ) {
+        val terminal = phase == ChessPhase.GAME_OVER
+        val globalVersion = stateVersion.incrementAndGet()
+        val version = playerSignalVersions.merge(player.sessionId, globalVersion) { old, _ -> old + 1 } ?: globalVersion
+        player.enqueueState(
+            renderState(this, player.sessionId, player.lang),
+            terminal = terminal,
+            version = version,
+        )
     }
 
     fun broadcastToAllConnected(renderState: (ChessGame, String, String) -> String) {
         players.values
             .filter { it.connected }
-            .forEach { player ->
-                player.channel.trySend(renderState(this, player.sessionId, player.lang))
-            }
+            .forEach { player -> enqueueRenderedState(player, renderState) }
+    }
+
+    fun broadcastToConnectedExcept(
+        excludedSessionId: String,
+        renderState: (ChessGame, String, String) -> String,
+    ) {
+        players.values
+            .filter { it.connected && it.sessionId != excludedSessionId }
+            .forEach { player -> enqueueRenderedState(player, renderState) }
     }
 
     fun cleanup() {
-        players.values.forEach { runCatching { it.channel.close() } }
+        players.values.forEach {
+            it.clearPendingStateHtml()
+            runCatching { it.channel.close() }
+        }
+        playerSignalVersions.clear()
     }
 
     @Synchronized
@@ -615,6 +676,7 @@ class ChessGame(
                 if (whiteTimeRemainingMs <= 0L || blackTimeRemainingMs <= 0L) {
                     resetPlayerClocks()
                 }
+                gameStartedAt = System.currentTimeMillis()
                 startTurnClock()
                 clockStarted = false
             }
@@ -624,6 +686,7 @@ class ChessGame(
             }
             turnStartedAt = null
             clockStarted = false
+            gameStartedAt = null
         }
         if (phase != ChessPhase.GAME_OVER) {
             autoRestartAt = null
@@ -632,6 +695,7 @@ class ChessGame(
 
     private fun removeExpiredPlayer(sessionId: String): Boolean {
         val existed = players.remove(sessionId) != null
+        playerSignalVersions.remove(sessionId)
         playerOrder.remove(sessionId)
         colorAssignments.remove(sessionId)
         updateColorAssignmentCache()
@@ -677,6 +741,7 @@ class ChessGame(
         lastMove = null
         lastMoveMeta = null
         resetPlayerClocks()
+        gameStartedAt = System.currentTimeMillis()
         startTurnClock()
         clockStarted = false
         colorAssignments.clear()
@@ -773,10 +838,40 @@ class ChessGame(
         turnStartedAt = System.currentTimeMillis()
     }
 
+    private fun maybeStartClockAfterWhiteGracePeriod() {
+        if (!timedModeEnabled || phase != ChessPhase.IN_PROGRESS || clockStarted) return
+        if (turn != ChessColor.WHITE) return
+        val startedAt = gameStartedAt ?: return
+        val elapsed = System.currentTimeMillis() - startedAt
+        if (elapsed < WHITE_FIRST_MOVE_GRACE_MS) return
+        val overtime = elapsed - WHITE_FIRST_MOVE_GRACE_MS
+        clockStarted = true
+        startTurnClock()
+        if (overtime > 0L) {
+            updateTurnDeadlineFromElapsed(overtime)
+        }
+    }
+
+    private fun updateTurnDeadlineFromElapsed(elapsedMs: Long) {
+        if (!timedModeEnabled || phase != ChessPhase.IN_PROGRESS || !clockStarted) return
+        if (elapsedMs <= 0L) return
+        val elapsed = elapsedMs.coerceAtLeast(0L)
+        if (turn == ChessColor.WHITE) {
+            whiteTimeRemainingMs = (whiteTimeRemainingMs - elapsed).coerceAtLeast(0L)
+        } else {
+            blackTimeRemainingMs = (blackTimeRemainingMs - elapsed).coerceAtLeast(0L)
+        }
+        turnStartedAt = System.currentTimeMillis()
+    }
+
     @Synchronized
     internal fun forceCurrentTurnElapsedForTesting(elapsedMs: Long) {
         if (!timedModeEnabled || phase != ChessPhase.IN_PROGRESS) return
-        turnStartedAt = System.currentTimeMillis() - elapsedMs
+        val now = System.currentTimeMillis()
+        turnStartedAt = now - elapsedMs
+        if (!clockStarted && turn == ChessColor.WHITE) {
+            gameStartedAt = now - elapsedMs
+        }
     }
 
     @Synchronized
@@ -810,6 +905,7 @@ class ChessGame(
         val blackTimeRemainingMs: Long,
         val turnStartedAt: Long?,
         val clockStarted: Boolean,
+        val gameStartedAt: Long?,
     )
 
     private fun snapshotState(): MoveSnapshot =
@@ -829,6 +925,7 @@ class ChessGame(
             blackTimeRemainingMs = blackTimeRemainingMs,
             turnStartedAt = turnStartedAt,
             clockStarted = clockStarted,
+            gameStartedAt = gameStartedAt,
         )
 
     private fun restoreState(snapshot: MoveSnapshot) {
@@ -850,6 +947,7 @@ class ChessGame(
         blackTimeRemainingMs = snapshot.blackTimeRemainingMs
         turnStartedAt = snapshot.turnStartedAt
         clockStarted = snapshot.clockStarted
+        gameStartedAt = snapshot.gameStartedAt
     }
 
     private fun resetBoard() {

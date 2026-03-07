@@ -112,7 +112,7 @@ a:hover {
 
 #share-btn {
     background: transparent;
-    border: 1px solid var(--accent-blue);
+    border-color: var(--accent-blue);
     color: var(--accent-blue);
     padding: 8px;
     border-radius: 8px;
@@ -179,7 +179,8 @@ a:hover {
 }
 
 .share-icon,
-.sound-icon {
+.sound-icon,
+.surrender-icon {
     display: inline-flex;
     width: 16px;
     height: 16px;
@@ -192,7 +193,8 @@ a:hover {
 }
 
 .share-icon svg,
-.sound-icon svg {
+.sound-icon svg,
+.surrender-icon svg {
     width: 16px;
     height: 16px;
     fill: currentColor;
@@ -242,6 +244,7 @@ a:hover {
 
 #share-btn:hover {
     background: var(--accent-blue);
+    border-color: var(--accent-blue);
     color: white;
 }
 
@@ -418,6 +421,7 @@ a:hover {
     display: flex;
     align-items: center;
     gap: 10px;
+    width: 100%;
     color: var(--text-secondary);
     font-size: 0.92rem;
     font-weight: 500;
@@ -434,6 +438,7 @@ a:hover {
 
 .option-slider {
     position: relative;
+    flex: 0 0 42px;
     width: 42px;
     height: 24px;
     border-radius: 999px;
@@ -458,6 +463,8 @@ a:hover {
     display: inline-flex;
     flex-direction: column;
     gap: 2px;
+    min-width: 0;
+    flex: 1 1 auto;
 }
 
 .option-title {
@@ -677,6 +684,23 @@ input::placeholder {
     border: 2px solid transparent;
     transition: all 0.3s ease;
     position: relative;
+    height: 74px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.player-main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: transform 180ms ease;
+}
+
+.player-card:has(.player-connection-state.active) .player-main {
+    transform: translateY(-2px);
 }
 
 .player-card.you {
@@ -714,10 +738,12 @@ input::placeholder {
 .player-name {
     font-weight: 700;
     font-size: 0.9rem;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    max-width: 100%;
+    text-align: center;
 }
 
 .player-marbles {
@@ -729,8 +755,9 @@ input::placeholder {
 .player-status {
     color: var(--text-muted);
     font-size: 0.7rem;
-    margin-top: 4px;
+    margin-top: 0;
     font-weight: 500;
+    text-align: center;
 }
 
 .player-guessed {
@@ -743,16 +770,45 @@ input::placeholder {
 .player-disconnected {
     color: var(--accent-red);
     font-size: 0.75rem;
-    margin-top: 6px;
+    margin-top: 0;
     font-weight: 600;
+    width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .player-countdown {
     color: var(--accent-gold);
     font-size: 0.75rem;
-    margin-top: 6px;
+    margin-top: 0;
     font-weight: 600;
     animation: pulse 1s ease-in-out infinite;
+    width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.player-connection-state {
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 0;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transform: translateY(-2px);
+    transition: max-height 180ms ease, opacity 160ms ease, margin-top 180ms ease, transform 180ms ease;
+}
+
+.player-connection-state.active {
+    min-height: 18px;
+    max-height: 24px;
+    opacity: 1;
+    margin-top: 6px;
+    transform: translateY(0);
 }
 
 .countdown-timer {
@@ -846,12 +902,121 @@ input::placeholder {
 .chess-board-stage {
     width: 100%;
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
     margin-top: 0;
 }
 
 .chess-board-stage-outside {
     margin-top: 0;
+}
+
+.chess-board-meta {
+    width: min(calc(100vw - 88px), calc(100dvh - 320px), 900px);
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 2px;
+}
+
+.chess-board-meta-enemy {
+    margin-bottom: 6px;
+}
+
+.chess-board-meta-own {
+    margin-top: 6px;
+}
+
+.board-side-name {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 70%;
+}
+
+.board-side-clock {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    min-width: 56px;
+    text-align: right;
+}
+
+.chess-surrender-btn {
+    margin-left: 6px;
+    margin-right: auto;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    min-height: 40px;
+    max-height: 40px;
+    padding: 8px;
+    border-radius: 8px;
+    background: rgba(0, 212, 255, 0.08);
+    border-color: rgba(0, 212, 255, 0.45);
+    color: rgba(0, 212, 255, 0.82);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#surrender-btn:hover,
+#surrender-btn.active {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: #ffffff;
+}
+
+.surrender-modal-box {
+    min-width: min(90vw, 360px);
+    text-align: center;
+}
+
+.surrender-modal-title {
+    margin: 0;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.surrender-modal-copy {
+    margin: 2px 0 0;
+    color: var(--text-secondary);
+}
+
+.surrender-modal-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 6px;
+}
+
+.surrender-modal-actions .btn {
+    width: 100%;
+    min-height: 42px;
+    font-size: 0.98rem;
+    padding: 10px 14px;
+}
+
+.chess-board-meta-own .board-side-name {
+    max-width: calc(70% - 90px);
+}
+
+@media (min-width: 600px) {
+    .chess-board-meta-own .chess-surrender-btn {
+        min-width: 40px;
+        max-width: 40px;
+        width: 40px;
+    }
 }
 
 .chess-move-form {
@@ -1051,17 +1216,18 @@ input::placeholder {
 .move-trail-piece {
     position: absolute;
     z-index: 1600;
-    font-size: clamp(2rem, 5.4vw, 4rem);
+    font-size: clamp(1.75rem, 5.4vw, 3.9rem);
     line-height: 1;
     pointer-events: none;
     transform: translate(-50%, -50%);
     opacity: 1;
-    transition: transform 1400ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 1400ms ease;
+    transition: transform 700ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 700ms ease;
     filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.45));
 }
 
 .chess-piece.move-arrival-hidden {
     opacity: 0;
+    transition: opacity 120ms linear;
 }
 
 .capture-spark {
@@ -1144,17 +1310,8 @@ input::placeholder {
     filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35));
 }
 
-.chess-square.moved .chess-piece {
-    animation: piece-pop 220ms ease;
-}
-
 .chess-square.captured {
     animation: capture-flash 220ms ease;
-}
-
-@keyframes piece-pop {
-    0% { transform: scale(0.75); opacity: 0.55; }
-    100% { transform: scale(1); opacity: 1; }
 }
 
 @keyframes capture-flash {
@@ -1230,6 +1387,10 @@ input::placeholder {
     }
 
     .chess-square {
+        font-size: clamp(2rem, 6.8vw, 3.3rem);
+    }
+
+    .move-trail-piece {
         font-size: clamp(2rem, 6.8vw, 3.3rem);
     }
 

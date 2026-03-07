@@ -342,7 +342,7 @@ class DisconnectHandlingTest {
         assertFalse(game.players["player1"]!!.connected)
         assertNotNull(game.players["player1"]!!.disconnectedAt)
 
-        // Reconnect (simulating SSE reconnection)
+        // Reconnect (simulating realtime reconnection)
         game.players["player1"]!!.connected = true
 
         assertTrue(game.players["player1"]!!.connected)
