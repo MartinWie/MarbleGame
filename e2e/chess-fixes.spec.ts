@@ -180,7 +180,19 @@ test.describe('Chess Fixes', () => {
       await blackPage.locator('.chess-square[data-square="e7"]').click();
       await blackPage.locator('.chess-square[data-square="e5"]').click();
 
-      await expect(blackPage.locator('#chess-toast')).toContainText(/not your turn|nicht am zug/i);
+      const status = await blackPage.evaluate(async ({ gameId }) => {
+        const body = new URLSearchParams({ from: 'e7', to: 'e5' });
+        const response = await fetch(`/chess/${gameId}/move`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+          body: body.toString(),
+        });
+        return response.status;
+      }, { gameId });
+      expect(status).toBe(409);
+
+      await expect(blackPage.locator('.chess-square[data-square="e7"]')).toHaveAttribute('data-piece', 'p');
+      await expect(blackPage.locator('.chess-square[data-square="e5"]')).toHaveAttribute('data-piece', '');
     } finally {
       await p1Context.close();
       await p2Context.close();

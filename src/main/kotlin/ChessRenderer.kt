@@ -160,6 +160,14 @@ fun renderChessState(
                         p("turn-line turn-wait") { +"chess.waiting.title".t(lang) }
                         p("waiting-ready") { +"chess.waiting.players".t(lang, connected) }
                         p("waiting-share") { +"chess.waiting.hint".t(lang) }
+                        if (game.timedModeEnabled || game.streamerModeEnabled) {
+                            val enabled = mutableListOf<String>()
+                            if (game.timedModeEnabled) {
+                                enabled += "chess.option.enabled.timed".t(lang, game.whiteClockSecondsRemaining() / 60)
+                            }
+                            if (game.streamerModeEnabled) enabled += "chess.option.enabled.streamer".t(lang)
+                            p("hint") { +"chess.option.enabled".t(lang, enabled.joinToString(" + ")) }
+                        }
                     }
                 }
 
@@ -171,6 +179,19 @@ fun renderChessState(
                             yourColor == null -> p("turn-line") { +"chess.turn".t(lang, turnText) }
                             yourColor == game.turn -> p("turn-line turn-your") { +"chess.turn.yours".t(lang) }
                             else -> p("turn-line turn-wait") { +"chess.turn.wait".t(lang, turnText) }
+                        }
+                        if (game.timedModeEnabled) {
+                            p("hint chess-clock-line") {
+                                span("clock-white") {
+                                    attributes["data-prefix"] = "chess.color.white".t(lang)
+                                    +"${"chess.color.white".t(lang)}: ${formatClock(game.whiteClockSecondsRemaining())}"
+                                }
+                                +" • "
+                                span("clock-black") {
+                                    attributes["data-prefix"] = "chess.color.black".t(lang)
+                                    +"${"chess.color.black".t(lang)}: ${formatClock(game.blackClockSecondsRemaining())}"
+                                }
+                            }
                         }
                         p("check-alert") { +(if (checkedKingSquare != null) "chess.check".t(lang) else "") }
 
@@ -195,12 +216,18 @@ fun renderChessState(
                                 "disconnect" -> "chess.gameOver.disconnect".t(lang)
                                 "checkmate" -> "chess.gameOver.checkmate".t(lang)
                                 "stalemate" -> "chess.gameOver.stalemateHint".t(lang)
+                                "timeout" -> "chess.gameOver.timeout".t(lang)
                                 else -> null
                             }
                         if (reasonText != null) {
                             p("hint") { +reasonText }
                         }
-                        if (isCreator) {
+                        if (!game.streamerModeEnabled) {
+                            val sec = game.autoRestartSecondsRemaining()
+                            if (sec > 0) {
+                                p("hint auto-restart-line") { +"chess.autoRestart".t(lang, sec) }
+                            }
+                        } else if (isCreator) {
                             button(classes = "btn btn-primary") {
                                 hxPost("/chess/${game.id}/new-game")
                                 hxSwap(HxSwapOption.NONE)
@@ -296,6 +323,10 @@ private fun DIV.renderBoard(
             attributes["data-castle-wq"] = if (game.isCastleAvailable(ChessColor.WHITE, false)) "1" else "0"
             attributes["data-castle-bk"] = if (game.isCastleAvailable(ChessColor.BLACK, true)) "1" else "0"
             attributes["data-castle-bq"] = if (game.isCastleAvailable(ChessColor.BLACK, false)) "1" else "0"
+            attributes["data-timed-mode"] = if (game.timedModeEnabled) "1" else "0"
+            attributes["data-white-seconds"] = game.whiteClockSecondsRemaining().toString()
+            attributes["data-black-seconds"] = game.blackClockSecondsRemaining().toString()
+            attributes["data-clock-started"] = if (game.clockStarted()) "1" else "0"
             for (rank in rankOrder) {
                 for (file in fileOrder) {
                     val square = "$file$rank"
@@ -339,3 +370,10 @@ private fun pieceToUnicode(piece: Char?): String? =
         'p' -> "♟\uFE0E"
         else -> null
     }
+
+private fun formatClock(seconds: Int): String {
+    val clamped = seconds.coerceAtLeast(0)
+    val min = clamped / 60
+    val sec = clamped % 60
+    return String.format("%d:%02d", min, sec)
+}

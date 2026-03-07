@@ -145,6 +145,42 @@ fun Application.configureRouting() {
                                         maxLength = MAX_PLAYER_NAME_LENGTH.toString()
                                     }
                                 }
+                                div("option-row") {
+                                    label("option-checkbox") {
+                                        input(type = InputType.checkBox, name = "timedMode") { id = "timed-mode" }
+                                        span("option-slider") {}
+                                        span("option-copy") {
+                                            span("option-title") { +"home.chess.option.timed".t(lang) }
+                                            span("option-subtitle") { +"home.chess.option.timed.hint".t(lang) }
+                                        }
+                                    }
+                                }
+                                div {
+                                    id = "timed-config-wrap"
+                                    classes = setOf("option-row", "timed-config")
+                                    label {
+                                        htmlFor = "clock-minutes"
+                                        +"home.chess.option.clockMinutes".t(lang)
+                                    }
+                                    input(type = InputType.number, name = "clockMinutes") {
+                                        id = "clock-minutes"
+                                        min = "1"
+                                        max = "60"
+                                        step = "1"
+                                        value = "5"
+                                        attributes["inputmode"] = "numeric"
+                                    }
+                                }
+                                div("option-row") {
+                                    label("option-checkbox") {
+                                        input(type = InputType.checkBox, name = "streamerMode") { id = "streamer-mode" }
+                                        span("option-slider") {}
+                                        span("option-copy") {
+                                            span("option-title") { +"home.chess.option.streamer".t(lang) }
+                                            span("option-subtitle") { +"home.chess.option.streamer.hint".t(lang) }
+                                        }
+                                    }
+                                }
                                 button(type = ButtonType.submit, classes = "btn btn-primary") { +"button.createChess".t(lang) }
                             }
                         }
@@ -265,11 +301,21 @@ fun Application.configureRouting() {
                 }
             val params = call.receiveParameters()
             val playerName = params["playerName"]?.trim()?.take(MAX_PLAYER_NAME_LENGTH)?.takeIf { it.isNotEmpty() } ?: "Player"
+            val timedModeEnabled = params["timedMode"] == "on"
+            val streamerModeEnabled = params["streamerMode"] == "on"
+            val clockMinutes = params["clockMinutes"]?.toIntOrNull()?.coerceIn(1, 60) ?: 5
+            val initialClockSeconds = clockMinutes * 60
             val lang = call.getLanguage()
 
             call.sessions.set(session.copy(playerName = playerName))
 
-            val game = ChessGameManager.createGame(session.id)
+            val game =
+                ChessGameManager.createGame(
+                    session.id,
+                    timedModeEnabled = timedModeEnabled,
+                    streamerModeEnabled = streamerModeEnabled,
+                    initialClockSeconds = initialClockSeconds,
+                )
             game.addPlayer(session.id, playerName, lang)
 
             val redirectUrl = "/chess/${game.id}"
@@ -802,6 +848,32 @@ fun Application.configureRouting() {
                 game.broadcastToAllConnected(::renderChessState)
             }
 
+            call.respondText("OK")
+        }
+
+        post("/chess/{gameId}/check-time") {
+            val session = call.sessions.get<UserSession>() ?: return@post
+            val gameId = call.parameters["gameId"] ?: return@post
+            val game = ChessGameManager.getGame(gameId) ?: return@post
+            if (game.players[session.id] == null) {
+                call.respondText("Forbidden", status = HttpStatusCode.Forbidden)
+                return@post
+            }
+            game.applyTurnClockTick()
+            val changed = game.checkTurnTimeout()
+            if (changed) {
+                game.broadcastToAllConnected(::renderChessState)
+            }
+            call.respondText("OK")
+        }
+
+        post("/chess/{gameId}/check-auto-restart") {
+            val gameId = call.parameters["gameId"] ?: return@post
+            val game = ChessGameManager.getGame(gameId) ?: return@post
+            if (game.shouldAutoRestartNow()) {
+                game.resetForNewGame()
+                game.broadcastToAllConnected(::renderChessState)
+            }
             call.respondText("OK")
         }
 

@@ -221,6 +221,20 @@ function initGame(gameId) {
         });
     }
 
+    function bindTimedModeToggle() {
+        var timedCheckbox = document.getElementById('timed-mode');
+        var timedConfig = document.querySelector('.timed-config');
+        if (!timedCheckbox || !timedConfig || timedCheckbox.dataset.timedBound === '1') return;
+        timedCheckbox.dataset.timedBound = '1';
+
+        function syncTimedConfig() {
+            timedConfig.classList.toggle('hidden', !timedCheckbox.checked);
+        }
+
+        syncTimedConfig();
+        timedCheckbox.addEventListener('change', syncTimedConfig);
+    }
+
     function bindQrButton() {
         var qrBtn = document.getElementById('qr-btn');
         var qrModal = document.getElementById('qr-modal');
@@ -537,6 +551,8 @@ function initGame(gameId) {
     bindShareButton();
     bindSoundButton();
     bindQrButton();
+    bindTimedModeToggle();
+    setTimeout(bindTimedModeToggle, 50);
     var initialPhase = phaseState();
     lastPhaseClass = initialPhase.phaseClass;
     lastYourTurn = initialPhase.yourTurn;

@@ -26,8 +26,19 @@ object ChessGameManager {
                 )
             }
 
-    fun createGame(creatorSessionId: String): ChessGame {
-        val game = ChessGame(creatorSessionId = creatorSessionId)
+    fun createGame(
+        creatorSessionId: String,
+        timedModeEnabled: Boolean = false,
+        streamerModeEnabled: Boolean = false,
+        initialClockSeconds: Int = ChessGame.INITIAL_CLOCK_SECONDS,
+    ): ChessGame {
+        val game =
+            ChessGame(
+                creatorSessionId = creatorSessionId,
+                timedModeEnabled = timedModeEnabled,
+                streamerModeEnabled = streamerModeEnabled,
+                initialClockSeconds = initialClockSeconds,
+            )
         games[game.id] = game
         chessManagerLogger.info("Chess game {} created, {} active games total", game.id, games.size)
         return game

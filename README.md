@@ -206,13 +206,11 @@ e2e/                  # Playwright E2E tests
 
 ### TODO
 
-- mögliche züge dezenter(nur punkte instead of frames) kill or threat can stay as is
-- Pfeile(zeichnen) mit rechtsclick(mögliche züge abhängig vom piece)
-- auf zeit spielen option, 
+- Pfeile(zeichnen) mit rechtsclick auf feld und dann auf anderem feld los lassen zum einzeichnen(nur relevant für desktop)(like normal chess plattforms)
 - felder bezeichnungen einblenden A1, etc, 
 - option to replay the moves (züge zurück gehen!)(not really go back, but to have the option to see how the board looked like x steps back)
-- Checkbox für streamer mode(host bleibt immer drin und spectator wechseln durch)
 - analyse gegen schachengine?
+- Start with redis setup to avoid loosing game state on server restart
 
 ### TODO - Road to 100x Capacity
 

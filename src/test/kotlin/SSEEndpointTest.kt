@@ -49,6 +49,81 @@ class SSEEndpointTest {
         }
 
     @Test
+    fun `chess create accepts timed and streamer options`() =
+        testApplication {
+            application { module() }
+
+            val client =
+                createClient {
+                    install(HttpCookies)
+                    followRedirects = false
+                }
+
+            client.get("/")
+
+            val response =
+                client.submitForm(
+                    url = "/chess/create",
+                    formParameters =
+                        parameters {
+                            append("playerName", "OptionHost")
+                            append("timedMode", "on")
+                            append("clockMinutes", "7")
+                            append("streamerMode", "on")
+                        },
+                )
+
+            assertEquals(HttpStatusCode.Found, response.status)
+            val location = response.headers["Location"] ?: error("Missing redirect")
+            val gameId = location.substringAfterLast("/chess/")
+            val game = ChessGameManager.getGame(gameId) ?: error("Game not found")
+
+            assertTrue(game.timedModeEnabled)
+            assertTrue(game.streamerModeEnabled)
+            assertEquals(7 * 60, game.whiteClockSecondsRemaining())
+            assertEquals(7 * 60, game.blackClockSecondsRemaining())
+
+            ChessGameManager.removeGame(gameId)
+        }
+
+    @Test
+    fun `chess check-time requires game membership`() =
+        testApplication {
+            application { module() }
+
+            val ownerClient =
+                createClient {
+                    install(HttpCookies)
+                    followRedirects = false
+                }
+            ownerClient.get("/")
+            val createResponse =
+                ownerClient.submitForm(
+                    url = "/chess/create",
+                    formParameters =
+                        parameters {
+                            append("playerName", "Owner")
+                            append("timedMode", "on")
+                        },
+                )
+            val gameId = createResponse.headers["Location"]!!.substringAfterLast("/chess/")
+
+            val outsiderClient =
+                createClient {
+                    install(HttpCookies)
+                    followRedirects = false
+                }
+            outsiderClient.get("/")
+            val forbidden = outsiderClient.post("/chess/$gameId/check-time")
+            assertEquals(HttpStatusCode.Forbidden, forbidden.status)
+
+            val ownerResult = ownerClient.post("/chess/$gameId/check-time")
+            assertEquals(HttpStatusCode.OK, ownerResult.status)
+
+            ChessGameManager.removeGame(gameId)
+        }
+
+    @Test
     fun `game create without HTMX header returns regular redirect`() =
         testApplication {
             application { module() }

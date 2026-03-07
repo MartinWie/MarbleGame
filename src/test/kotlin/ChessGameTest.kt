@@ -138,6 +138,131 @@ class ChessGameTest {
     }
 
     @Test
+    fun `timed mode is classical clock and active side loses on timeout`() {
+        val game = ChessGame(creatorSessionId = "p1", randomColorAssignment = false, timedModeEnabled = true)
+        game.addPlayer("p1", "Alice").connected = true
+        game.addPlayer("p2", "Bob").connected = true
+
+        assertTrue(game.makeMove("p1", "e2", "e4"))
+        assertTrue(game.makeMove("p2", "e7", "e5"))
+
+        game.forceCurrentTurnElapsedForTesting(ChessGame.INITIAL_CLOCK_SECONDS * 1000L + 1000L)
+
+        val changed = game.checkTurnTimeout()
+
+        assertTrue(changed)
+        assertEquals(ChessPhase.GAME_OVER, game.phase)
+        assertEquals("timeout", game.endReason)
+        assertEquals("p2", game.winnerSessionId)
+    }
+
+    @Test
+    fun `timed mode does not reset clock when spectator joins mid game`() {
+        val game = ChessGame(creatorSessionId = "p1", randomColorAssignment = false, timedModeEnabled = true)
+        game.addPlayer("p1", "Alice").connected = true
+        game.addPlayer("p2", "Bob").connected = true
+
+        assertTrue(game.makeMove("p1", "e2", "e4"))
+        game.forceCurrentTurnElapsedForTesting(90_000L)
+        game.applyTurnClockTick()
+        val blackBefore = game.blackClockSecondsRemaining()
+
+        game.addPlayer("p3", "Spec").connected = true
+        val blackAfter = game.blackClockSecondsRemaining()
+
+        assertTrue(blackBefore in 205..215)
+        assertTrue(blackAfter in 205..215)
+    }
+
+    @Test
+    fun `streamer mode keeps host in next round when spectator exists`() {
+        val game = ChessGame(creatorSessionId = "p1", randomColorAssignment = false, streamerModeEnabled = true)
+        game.addPlayer("p1", "Host").connected = true
+        game.addPlayer("p2", "Guest").connected = true
+        val spectator = game.addPlayer("p3", "Spec")
+        spectator.connected = true
+        spectator.connectedSinceAt = System.currentTimeMillis() - 20_000
+
+        game.forceGameOverForTesting(winnerSessionId = "p2", reason = "checkmate")
+
+        val started = game.resetForNewGame()
+
+        assertTrue(started)
+        assertNotNull(game.colorFor("p1"))
+        assertNotNull(game.colorFor("p3"))
+        assertNull(game.colorFor("p2"))
+    }
+
+    @Test
+    fun `timed mode clock starts only after white first move`() {
+        val game = ChessGame(creatorSessionId = "p1", randomColorAssignment = false, timedModeEnabled = true)
+        game.addPlayer("p1", "Alice").connected = true
+        game.addPlayer("p2", "Bob").connected = true
+
+        // Before first white move, simulated elapsed time must not reduce clocks.
+        game.forceClockStartedForTesting(false)
+        game.forceCurrentTurnElapsedForTesting(120_000L)
+        game.applyTurnClockTick()
+        assertEquals(ChessGame.INITIAL_CLOCK_SECONDS, game.whiteClockSecondsRemaining())
+        assertEquals(ChessGame.INITIAL_CLOCK_SECONDS, game.blackClockSecondsRemaining())
+
+        assertTrue(game.makeMove("p1", "e2", "e4"))
+
+        // Now black clock should run.
+        game.forceClockStartedForTesting(true)
+        game.forceCurrentTurnElapsedForTesting(2_000L)
+        game.applyTurnClockTick()
+        assertTrue(game.blackClockSecondsRemaining() <= ChessGame.INITIAL_CLOCK_SECONDS - 1)
+        assertEquals(ChessGame.INITIAL_CLOCK_SECONDS, game.whiteClockSecondsRemaining())
+    }
+
+    @Test
+    fun `loser becomes newest spectator so older spectators get priority`() {
+        val game = ChessGame(creatorSessionId = "p1", randomColorAssignment = false)
+        game.addPlayer("p1", "Alice").connected = true
+        game.addPlayer("p2", "Bob").connected = true
+
+        val olderSpec = game.addPlayer("p3", "Older")
+        olderSpec.connected = true
+        olderSpec.connectedSinceAt = System.currentTimeMillis() - 30_000
+
+        val newerSpec = game.addPlayer("p4", "Newer")
+        newerSpec.connected = true
+        newerSpec.connectedSinceAt = System.currentTimeMillis() - 10_000
+
+        game.forceGameOverForTesting(winnerSessionId = "p1", reason = "checkmate")
+        val started = game.resetForNewGame()
+
+        assertTrue(started)
+        assertNotNull(game.colorFor("p1"))
+        // oldest pre-existing spectator should be promoted, loser should wait as fresh spectator
+        assertNotNull(game.colorFor("p3"))
+        assertNull(game.colorFor("p2"))
+    }
+
+    @Test
+    fun `game over schedules auto restart when streamer mode is off`() {
+        val game = startedGame()
+
+        game.forceGameOverForTesting(winnerSessionId = "p1", reason = "checkmate")
+        game.scheduleAutoRestart(delaySeconds = 1)
+
+        assertTrue(game.autoRestartSecondsRemaining() in 0..1)
+    }
+
+    @Test
+    fun `streamer mode disables auto restart countdown`() {
+        val game = ChessGame(creatorSessionId = "p1", randomColorAssignment = false, streamerModeEnabled = true)
+        game.addPlayer("p1", "Host").connected = true
+        game.addPlayer("p2", "Guest").connected = true
+        game.forceGameOverForTesting(winnerSessionId = "p1", reason = "checkmate")
+        game.scheduleAutoRestart(delaySeconds = 1)
+
+        assertEquals(0, game.autoRestartSecondsRemaining())
+        assertFalse(game.shouldAutoRestartNow())
+    }
+
+    @Test
     fun `cannot move when not your turn`() {
         val game = startedGame()
 

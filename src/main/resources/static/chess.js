@@ -26,6 +26,8 @@ function initChess(gameId) {
     var lastTouchHandledSquare = null;
     var usePointerTouch = !!window.PointerEvent;
     var lastUpdateAt = Date.now();
+    var chessClockInterval = null;
+    var autoRestartInterval = null;
     var moveInFlight = false;
     var soundMuted = localStorage.getItem('marblegame_sound_muted') === '1';
     var audioCtx = null;
@@ -242,6 +244,68 @@ function initChess(gameId) {
                 }
             });
         }, 1000);
+
+        var boardEl = document.querySelector('.chess-board');
+        var timedMode = boardEl && boardEl.getAttribute('data-timed-mode') === '1';
+        if (chessClockInterval) {
+            clearInterval(chessClockInterval);
+            chessClockInterval = null;
+        }
+        if (timedMode) {
+            chessClockInterval = setInterval(function() {
+                fetch('/chess/' + gameId + '/check-time', { method: 'POST' })
+                    .then(function(response) {
+                        if (response.ok) updateLocalClockLine();
+                    })
+                    .catch(function() {});
+            }, 1000);
+        }
+
+        if (autoRestartInterval) {
+            clearInterval(autoRestartInterval);
+            autoRestartInterval = null;
+        }
+        autoRestartInterval = setInterval(function() {
+            var line = document.querySelector('.auto-restart-line');
+            if (!line) return;
+            fetch('/chess/' + gameId + '/check-auto-restart', { method: 'POST' }).catch(function() {});
+        }, 1000);
+    }
+
+    function updateLocalClockLine() {
+        var boardEl = document.querySelector('.chess-board');
+        if (!boardEl || boardEl.getAttribute('data-timed-mode') !== '1') return;
+        if (boardEl.getAttribute('data-clock-started') !== '1') return;
+
+        var turn = boardEl.getAttribute('data-turn') || '';
+        var w = parseInt(boardEl.getAttribute('data-white-seconds') || '0', 10);
+        var b = parseInt(boardEl.getAttribute('data-black-seconds') || '0', 10);
+
+        if (turn === 'white' && w > 0) {
+            w -= 1;
+            boardEl.setAttribute('data-white-seconds', String(w));
+        } else if (turn === 'black' && b > 0) {
+            b -= 1;
+            boardEl.setAttribute('data-black-seconds', String(b));
+        }
+
+        function formatClock(seconds) {
+            var s = Math.max(0, parseInt(seconds || 0, 10));
+            var m = Math.floor(s / 60);
+            var rem = s % 60;
+            return m + ':' + (rem < 10 ? '0' : '') + rem;
+        }
+
+        var whiteEl = document.querySelector('.clock-white');
+        var blackEl = document.querySelector('.clock-black');
+        if (whiteEl) {
+            var wPrefix = whiteEl.getAttribute('data-prefix') || 'White';
+            whiteEl.textContent = wPrefix + ': ' + formatClock(w);
+        }
+        if (blackEl) {
+            var bPrefix = blackEl.getAttribute('data-prefix') || 'Black';
+            blackEl.textContent = bPrefix + ': ' + formatClock(b);
+        }
     }
 
     function connect() {
@@ -384,6 +448,10 @@ function initChess(gameId) {
         currentBoard.setAttribute('data-castle-wq', incomingBoard.getAttribute('data-castle-wq') || '0');
         currentBoard.setAttribute('data-castle-bk', incomingBoard.getAttribute('data-castle-bk') || '0');
         currentBoard.setAttribute('data-castle-bq', incomingBoard.getAttribute('data-castle-bq') || '0');
+        currentBoard.setAttribute('data-timed-mode', incomingBoard.getAttribute('data-timed-mode') || '0');
+        currentBoard.setAttribute('data-white-seconds', incomingBoard.getAttribute('data-white-seconds') || '0');
+        currentBoard.setAttribute('data-black-seconds', incomingBoard.getAttribute('data-black-seconds') || '0');
+        currentBoard.setAttribute('data-clock-started', incomingBoard.getAttribute('data-clock-started') || '0');
 
         currentBoard.querySelectorAll('.chess-square').forEach(function(squareEl) {
             var square = squareEl.getAttribute('data-square');
@@ -1438,6 +1506,8 @@ function initChess(gameId) {
 
     window.addEventListener('beforeunload', function() {
         if (countdownInterval) clearInterval(countdownInterval);
+        if (chessClockInterval) clearInterval(chessClockInterval);
+        if (autoRestartInterval) clearInterval(autoRestartInterval);
         if (pingCheckInterval) clearInterval(pingCheckInterval);
         if (reconnectTimeout) clearTimeout(reconnectTimeout);
         if (eventSource) eventSource.close();
