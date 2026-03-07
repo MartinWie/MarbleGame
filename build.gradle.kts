@@ -27,6 +27,7 @@ repositories {
 dependencies {
     implementation("io.ktor:ktor-server-core")
     implementation("io.ktor:ktor-server-sse")
+    implementation("io.ktor:ktor-server-websockets")
     implementation("io.ktor:ktor-server-host-common")
     implementation("io.ktor:ktor-server-html-builder")
     implementation("io.ktor:ktor-server-sessions")
@@ -40,6 +41,7 @@ dependencies {
     implementation("io.github.martinwie:kotlinx-htmx:0.1.0")
 
     testImplementation("io.ktor:ktor-server-test-host")
+    testImplementation("io.ktor:ktor-client-websockets")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
 }

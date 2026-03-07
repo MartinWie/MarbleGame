@@ -354,6 +354,70 @@ test.describe('Chess Joining', () => {
     }
   });
 
+  test('new game after rotation keeps board orientation aligned with assigned color', async ({ browser }) => {
+    const p1Context = await browser.newContext();
+    const p1 = await p1Context.newPage();
+    const p2Context = await browser.newContext();
+    const p2 = await p2Context.newPage();
+    const p3Context = await browser.newContext();
+    const p3 = await p3Context.newPage();
+
+    try {
+      const gameId = await createChessGame(p1, 'Host');
+      await joinChessGame(p2, gameId, 'Opponent');
+      await joinChessGame(p3, gameId, 'Spectator');
+
+      const { whitePage, blackPage } = await resolveWhiteBlackPages(p1, p2, gameId);
+
+      expect(await postMove(whitePage, gameId, 'f2', 'f3')).toBe(200);
+      expect(await postMove(blackPage, gameId, 'e7', 'e5')).toBe(200);
+      expect(await postMove(whitePage, gameId, 'g2', 'g4')).toBe(200);
+      expect(await postMove(blackPage, gameId, 'd8', 'h4')).toBe(200);
+
+      await expect(p1.locator('.winner-text')).toBeVisible();
+
+      await expect.poll(async () => {
+        return p1.locator('.auto-restart-line').count();
+      }, { timeout: 25000 }).toBe(0);
+
+      await expect.poll(async () => {
+        const pages = [p1, p2, p3];
+        let activeCount = 0;
+        let activeOrientationOk = 0;
+        let spectatorPromoted = false;
+
+        for (const page of pages) {
+          const board = page.locator('.chess-board');
+          if (await board.count() === 0) {
+            continue;
+          }
+
+          const yourColor = (await board.first().getAttribute('data-your-color')) || '';
+          const perspective = (await board.first().getAttribute('data-perspective')) || '';
+          const firstSquare = (await board.first().locator('.chess-square').first().getAttribute('data-square')) || '';
+
+          if (page === p3 && (yourColor === 'white' || yourColor === 'black')) {
+            spectatorPromoted = true;
+          }
+
+          if (yourColor === 'white') {
+            activeCount += 1;
+            if (perspective === 'white' && firstSquare === 'a8') activeOrientationOk += 1;
+          } else if (yourColor === 'black') {
+            activeCount += 1;
+            if (perspective === 'black' && firstSquare === 'h1') activeOrientationOk += 1;
+          }
+        }
+
+        return activeCount === 2 && activeOrientationOk === 2 && spectatorPromoted;
+      }, { timeout: 10000 }).toBe(true);
+    } finally {
+      await p1Context.close();
+      await p2Context.close();
+      await p3Context.close();
+    }
+  });
+
   test('last move indicator appears on both players after move', async ({ browser }) => {
     const p1Context = await browser.newContext();
     const p1 = await p1Context.newPage();

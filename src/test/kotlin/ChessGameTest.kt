@@ -159,6 +159,21 @@ class ChessGameTest {
     }
 
     @Test
+    fun `checkmate schedules auto restart in non streamer mode`() {
+        val game = startedGame()
+
+        assertTrue(game.makeMove("p1", "f2", "f3"))
+        assertTrue(game.makeMove("p2", "e7", "e5"))
+        assertTrue(game.makeMove("p1", "g2", "g4"))
+        assertTrue(game.makeMove("p2", "d8", "h4"))
+
+        assertEquals(ChessPhase.GAME_OVER, game.phase)
+        assertEquals("checkmate", game.endReason)
+        assertEquals("p2", game.winnerSessionId)
+        assertTrue(game.autoRestartSecondsRemaining() > 0)
+    }
+
+    @Test
     fun `timed mode does not reset clock when spectator joins mid game`() {
         val game = ChessGame(creatorSessionId = "p1", randomColorAssignment = false, timedModeEnabled = true)
         game.addPlayer("p1", "Alice").connected = true

@@ -149,6 +149,10 @@ npm run test:e2e:debug
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `POSTHOG_ENABLED` | `true` | Set to `false` to disable PostHog analytics and cookie banner |
+| `REALTIME_TRANSPORT` | `auto` | Realtime transport mode metadata for clients (currently always `auto` and WS+SSE are both active; not used as runtime switch) |
+| `REALTIME_ALLOWED_ORIGINS` | same-origin | Optional comma-separated WS Origin allowlist (e.g. `https://example.com,https://staging.example.com`) |
+
+Note: server-side maintenance is now ticker-driven (disconnect expiry, marbles round auto-advance, chess clocks, chess auto-restart). The old polling endpoints were removed.
 
 Example:
 ```bash
@@ -206,11 +210,15 @@ e2e/                  # Playwright E2E tests
 
 ### TODO
 
+- Own clock below board and Enemy above, next to name(Maybe show the player name there, also make sure the player name is limited to 15 chars(everywhere))
+- Surrender function(below the board, maybe next to clock and name)(only shows when you are actually playing, not spectating)
+- Game creation visual: second toggle text length seems to mess with the toggle visual width broken on phonen(make sure the toggle is not affected by the text length), 
 - Pfeile(zeichnen) mit rechtsclick auf feld und dann auf anderem feld los lassen zum einzeichnen(nur relevant für desktop)(like normal chess plattforms)
 - felder bezeichnungen einblenden A1, etc, 
 - option to replay the moves (züge zurück gehen!)(not really go back, but to have the option to see how the board looked like x steps back)
-- analyse gegen schachengine?
 - Start with redis setup to avoid loosing game state on server restart
+- Analytics against chess engine?
+- Split chess and marbles?
 
 ### TODO - Road to 100x Capacity
 
@@ -230,6 +238,8 @@ Target: scale from current single-instance setup to roughly 100x more concurrent
 - [ ] Add production dashboards + alerts (connections, queue depth, dropped updates, latency percentiles)
 
 See detailed migration plan: [docs/websocket-migration-plan.md](docs/websocket-migration-plan.md)
+
+Load-test baseline snapshot: [docs/load-baseline-2026-03-07.md](docs/load-baseline-2026-03-07.md)
 
 ## Network
 

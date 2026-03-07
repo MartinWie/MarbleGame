@@ -11,40 +11,246 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.sessions.*
 import io.ktor.server.sse.*
+import io.ktor.server.websocket.*
 import io.ktor.sse.*
+import io.ktor.websocket.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.html.*
 import org.slf4j.LoggerFactory
+import kotlin.time.Duration.Companion.seconds
 
 private val logger = LoggerFactory.getLogger("Routing")
 
 /** Ping interval for SSE keepalive (5 seconds). */
 private const val SSE_PING_INTERVAL_MS = 5_000L
 
+private const val WS_PING_MESSAGE = "__PING__"
+private const val WS_GAME_UPDATE_PREFIX = "__GAME_UPDATE__:"
+private const val WS_CHESS_UPDATE_PREFIX = "__CHESS_UPDATE__:"
+private const val INTERNAL_CONNECTION_CHECK = "__CONNECTION_CHECK__"
+
 /** Maximum length for player names to prevent abuse. */
 private const val MAX_PLAYER_NAME_LENGTH = 30
 
-/** Coroutine scope for game-related background tasks. */
-private val gameScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+private suspend fun DefaultWebSocketServerSession.runRealtimeWebSocketSession(
+    player: Player,
+    updatePrefix: String,
+    logLabel: String,
+    notifyOthersOnConnect: () -> Unit,
+    renderInitialState: () -> String,
+    onDisconnect: () -> Unit,
+) {
+    while (player.channel.tryReceive().isSuccess) {
+        // Discard old messages
+    }
 
-/**
- * Schedules auto-advance to next round after the countdown delay.
- * Only advances if the game is still in ROUND_RESULT phase.
- */
-private fun scheduleRoundAdvance(game: Game) {
-    gameScope.launch {
-        delay(ROUND_RESULT_COUNTDOWN_SECONDS * 1000L)
-        if (game.phase == GamePhase.ROUND_RESULT) {
-            game.nextRound()
-            game.broadcastToAllConnected(::renderGameState)
+    val connectionId = player.startNewConnection()
+    logger.debug("{} connected: {} connectionId={}", logLabel, player.name, connectionId)
+
+    var connectionAlive = true
+    val pingJob =
+        launch {
+            while (isActive && connectionAlive) {
+                delay(SSE_PING_INTERVAL_MS)
+                try {
+                    send(Frame.Text(WS_PING_MESSAGE))
+                } catch (_: Exception) {
+                    connectionAlive = false
+                    player.channel.trySend(INTERNAL_CONNECTION_CHECK)
+                    break
+                }
+            }
+        }
+
+    val inboundJob =
+        launch {
+            try {
+                for (incomingFrame in incoming) {
+                    when (incomingFrame) {
+                        is Frame.Close,
+                        is Frame.Ping,
+                        is Frame.Pong,
+                        -> {
+                            if (incomingFrame is Frame.Close) {
+                                connectionAlive = false
+                                player.channel.trySend(INTERNAL_CONNECTION_CHECK)
+                                break
+                            }
+                        }
+
+                        else -> {
+                            close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Unsupported client frame"))
+                            connectionAlive = false
+                            player.channel.trySend(INTERNAL_CONNECTION_CHECK)
+                            break
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                connectionAlive = false
+                player.channel.trySend(INTERNAL_CONNECTION_CHECK)
+            }
+        }
+
+    try {
+        notifyOthersOnConnect()
+        send(Frame.Text(updatePrefix + renderInitialState()))
+
+        val refreshJob =
+            launch {
+                delay(100)
+                if (connectionId == player.currentConnectionId && connectionAlive) {
+                    try {
+                        send(Frame.Text(updatePrefix + renderInitialState()))
+                    } catch (_: Exception) {
+                        // Connection might be closed, ignore
+                    }
+                }
+            }
+
+        for (message in player.channel) {
+            if (!connectionAlive) {
+                break
+            }
+            if (message == INTERNAL_CONNECTION_CHECK) {
+                continue
+            }
+            if (connectionId != player.currentConnectionId) {
+                break
+            }
+            send(Frame.Text(updatePrefix + message))
+        }
+
+        refreshJob.cancel()
+    } catch (e: Exception) {
+        logger.warn("{} error for {}: {}", logLabel, player.name, e.message)
+    } finally {
+        pingJob.cancel()
+        inboundJob.cancel()
+        player.endConnection(connectionId)
+
+        if (!player.connected) {
+            onDisconnect()
+        }
+    }
+}
+
+private suspend fun CoroutineScope.runRealtimeSseSession(
+    player: Player,
+    logLabel: String,
+    sendEvent: suspend (String) -> Unit,
+    sendPing: suspend () -> Unit,
+    notifyOthersOnConnect: () -> Unit,
+    renderInitialState: () -> String,
+    onDisconnect: () -> Unit,
+) {
+    while (player.channel.tryReceive().isSuccess) {
+        // Discard old messages
+    }
+
+    val connectionId = player.startNewConnection()
+    logger.debug("{} connected: {} connectionId={}", logLabel, player.name, connectionId)
+
+    var connectionAlive = true
+    val pingJob =
+        launch {
+            while (isActive && connectionAlive) {
+                delay(SSE_PING_INTERVAL_MS)
+                try {
+                    sendPing()
+                } catch (e: Exception) {
+                    logger.debug("{} ping failed for {}: {}", logLabel, player.name, e.message)
+                    connectionAlive = false
+                    player.channel.trySend(INTERNAL_CONNECTION_CHECK)
+                    break
+                }
+            }
+        }
+
+    try {
+        notifyOthersOnConnect()
+        sendEvent(renderInitialState())
+
+        val refreshJob =
+            launch {
+                delay(100)
+                if (connectionId == player.currentConnectionId && connectionAlive) {
+                    try {
+                        sendEvent(renderInitialState())
+                    } catch (_: Exception) {
+                        // Connection might be closed, ignore
+                    }
+                }
+            }
+
+        for (message in player.channel) {
+            if (!connectionAlive) {
+                break
+            }
+            if (message == INTERNAL_CONNECTION_CHECK) {
+                continue
+            }
+            if (connectionId != player.currentConnectionId) {
+                break
+            }
+            sendEvent(message)
+        }
+
+        refreshJob.cancel()
+    } catch (_: ClosedReceiveChannelException) {
+        // Channel closed, normal disconnect
+    } catch (e: Exception) {
+        logger.warn("{} error for {}: {}", logLabel, player.name, e.message)
+    } finally {
+        pingJob.cancel()
+        player.endConnection(connectionId)
+
+        if (!player.connected) {
+            onDisconnect()
         }
     }
 }
 
 fun Application.configureRouting() {
     install(SSE)
+    install(WebSockets) {
+        pingPeriod = null
+        timeout = 20.seconds
+        maxFrameSize = 64 * 1024L
+        masking = false
+    }
+    RealtimeMaintenanceService.start()
+    monitor.subscribe(ApplicationStopped) {
+        RealtimeMaintenanceService.stop()
+    }
+    logger.info(
+        "Realtime transport mode: {} (wsEnabled={}, sseEnabled={})",
+        RealtimeConfig.transportMode,
+        RealtimeConfig.wsEnabled,
+        RealtimeConfig.sseEnabled,
+    )
     routing {
+        fun isAllowedWebSocketOrigin(call: ApplicationCall): Boolean {
+            val origin = call.request.headers[HttpHeaders.Origin] ?: return true
+            val normalizedOrigin = origin.removeSuffix("/").lowercase()
+            if (RealtimeConfig.allowedOrigins.isEmpty()) {
+                val req = call.request.origin
+                val scheme = req.scheme.lowercase()
+                val host = req.serverHost.lowercase()
+                val port = req.serverPort
+                val defaultPort = if (scheme == "https") 443 else 80
+                val withPort = "$scheme://$host:$port"
+                val withoutPort = "$scheme://$host"
+                return if (port == defaultPort) {
+                    normalizedOrigin == withoutPort || normalizedOrigin == withPort
+                } else {
+                    normalizedOrigin == withPort
+                }
+            }
+            return RealtimeConfig.allowedOrigins.contains(normalizedOrigin)
+        }
+
         // Home page - create or join a game
         get("/") {
             val session = call.sessions.get<UserSession>()
@@ -614,6 +820,107 @@ fun Application.configureRouting() {
             }
         }
 
+        webSocket("/ws/game/{gameId}") {
+            if (!isAllowedWebSocketOrigin(call)) {
+                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Invalid origin"))
+                return@webSocket
+            }
+            val session =
+                call.sessions.get<UserSession>() ?: run {
+                    close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Session required"))
+                    return@webSocket
+                }
+            val gameId =
+                call.parameters["gameId"] ?: run {
+                    close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "Missing game id"))
+                    return@webSocket
+                }
+            val game =
+                GameManager.getGame(gameId) ?: run {
+                    close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "Game not found"))
+                    return@webSocket
+                }
+            val player =
+                game.players[session.id] ?: run {
+                    close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Not in game"))
+                    return@webSocket
+                }
+            val lang = call.getLanguage()
+            game.handlePlayerReconnect(session.id)
+            player.lang = lang
+
+            runRealtimeWebSocketSession(
+                player = player,
+                updatePrefix = WS_GAME_UPDATE_PREFIX,
+                logLabel = "WS",
+                notifyOthersOnConnect = {
+                    game.players.values
+                        .filter { it.connected && it.sessionId != session.id }
+                        .forEach { otherPlayer ->
+                            otherPlayer.channel.trySend(renderGameState(game, otherPlayer.sessionId, otherPlayer.lang))
+                        }
+                },
+                renderInitialState = { renderGameState(game, session.id, lang) },
+                onDisconnect = {
+                    logger.debug("WS disconnected: {}", player.name)
+                    val stateChanged = game.handlePlayerDisconnect(session.id)
+                    if (stateChanged) {
+                        game.broadcastToAllConnected(::renderGameState)
+                    }
+                },
+            )
+        }
+
+        webSocket("/ws/chess/{gameId}") {
+            if (!isAllowedWebSocketOrigin(call)) {
+                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Invalid origin"))
+                return@webSocket
+            }
+            val session =
+                call.sessions.get<UserSession>() ?: run {
+                    close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Session required"))
+                    return@webSocket
+                }
+            val gameId =
+                call.parameters["gameId"] ?: run {
+                    close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "Missing game id"))
+                    return@webSocket
+                }
+            val game =
+                ChessGameManager.getGame(gameId) ?: run {
+                    close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "Game not found"))
+                    return@webSocket
+                }
+            val player =
+                game.players[session.id] ?: run {
+                    close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Not in game"))
+                    return@webSocket
+                }
+            val lang = call.getLanguage()
+            game.handlePlayerReconnect(session.id)
+            player.lang = lang
+
+            runRealtimeWebSocketSession(
+                player = player,
+                updatePrefix = WS_CHESS_UPDATE_PREFIX,
+                logLabel = "Chess WS",
+                notifyOthersOnConnect = {
+                    game.players.values
+                        .filter { it.connected && it.sessionId != session.id }
+                        .forEach { other ->
+                            other.channel.trySend(renderChessState(game, other.sessionId, other.lang))
+                        }
+                },
+                renderInitialState = { renderChessState(game, session.id, lang) },
+                onDisconnect = {
+                    val changed = game.handlePlayerDisconnect(session.id)
+                    if (changed) {
+                        game.broadcastToAllConnected(::renderChessState)
+                    }
+                },
+            )
+        }
+
         // SSE endpoint for game updates with ping keepalive
         sse("/game/{gameId}/events") {
             val session = call.sessions.get<UserSession>() ?: return@sse
@@ -622,110 +929,30 @@ fun Application.configureRouting() {
             val player = game.players[session.id] ?: return@sse
             val lang = call.getLanguage()
 
-            // Update player's language preference (may have changed since join)
             player.lang = lang
-
-            // Drain any pending messages from previous connection (handles reconnect scenario)
-            while (player.channel.tryReceive().isSuccess) {
-                // Discard old messages
-            }
-
-            // Start new connection and get connection ID (this also marks player as connected)
-            val connectionId = player.startNewConnection()
-            logger.debug("SSE connected: {} connectionId={}", player.name, connectionId)
-
-            // Handle reconnection (e.g., re-add to playerOrder in lobby)
             game.handlePlayerReconnect(session.id)
 
-            // Flag to signal when connection should close
-            var connectionAlive = true
-
-            // Start ping job to keep connection alive and detect dead connections
-            val pingJob =
-                launch {
-                    while (isActive && connectionAlive) {
-                        delay(SSE_PING_INTERVAL_MS)
-                        try {
-                            send(ServerSentEvent("ping", event = "ping"))
-                        } catch (e: Exception) {
-                            logger.debug("SSE ping failed for {}: {}", player.name, e.message)
-                            connectionAlive = false
-                            // Send a dummy message to wake up the channel listener
-                            player.channel.trySend("__CONNECTION_CHECK__")
-                            break
+            runRealtimeSseSession(
+                player = player,
+                logLabel = "SSE",
+                sendEvent = { html -> send(ServerSentEvent(html, event = "game-update")) },
+                sendPing = { send(ServerSentEvent("ping", event = "ping")) },
+                notifyOthersOnConnect = {
+                    game.players.values
+                        .filter { it.connected && it.sessionId != session.id }
+                        .forEach { otherPlayer ->
+                            otherPlayer.channel.trySend(renderGameState(game, otherPlayer.sessionId, otherPlayer.lang))
                         }
-                    }
-                }
-
-            try {
-                // Notify OTHER players about this player's connection/reconnection
-                game.players.values
-                    .filter { it.connected && it.sessionId != session.id }
-                    .forEach { otherPlayer ->
-                        otherPlayer.channel.trySend(renderGameState(game, otherPlayer.sessionId, otherPlayer.lang))
-                    }
-
-                // Send initial state
-                send(ServerSentEvent(renderGameState(game, session.id, lang), event = "game-update"))
-
-                // Start a job to send a refresh after a short delay
-                // This catches any broadcasts that happened during connection setup
-                val refreshJob =
-                    launch {
-                        delay(100) // Wait 100ms for any in-flight broadcasts to settle
-                        if (connectionId == player.currentConnectionId && connectionAlive) {
-                            try {
-                                send(ServerSentEvent(renderGameState(game, session.id, lang), event = "game-update"))
-                            } catch (e: Exception) {
-                                // Connection might be closed, ignore
-                            }
-                        }
-                    }
-
-                for (message in player.channel) {
-                    // Check if connection is still alive (ping might have failed)
-                    if (!connectionAlive) {
-                        break
-                    }
-                    // Skip internal connection check messages
-                    if (message == "__CONNECTION_CHECK__") {
-                        continue
-                    }
-                    // If a new connection has taken over, stop processing and exit
-                    if (connectionId != player.currentConnectionId) {
-                        break
-                    }
-                    send(ServerSentEvent(message, event = "game-update"))
-                }
-
-                refreshJob.cancel()
-            } catch (e: ClosedReceiveChannelException) {
-                // Channel closed, normal disconnect
-            } catch (e: Exception) {
-                logger.warn("SSE error for {}: {}", player.name, e.message)
-            } finally {
-                pingJob.cancel()
-                // Only mark as disconnected if this is still the current connection
-                // This prevents race conditions during rapid reconnects
-                player.endConnection(connectionId)
-
-                // Only handle disconnect and broadcast if we actually disconnected
-                if (!player.connected) {
+                },
+                renderInitialState = { renderGameState(game, session.id, lang) },
+                onDisconnect = {
                     logger.debug("SSE disconnected: {}", player.name)
-                    val phaseBefore = game.phase
                     val stateChanged = game.handlePlayerDisconnect(session.id)
-
-                    // If disconnect caused a round to resolve, schedule auto-advance
-                    if (phaseBefore == GamePhase.GUESSING && game.phase == GamePhase.ROUND_RESULT) {
-                        scheduleRoundAdvance(game)
-                    }
-
-                    // Notify remaining players about the disconnect
                     if (stateChanged) {
                         game.broadcastToAllConnected(::renderGameState)
                     }
-                }
-            }
+                },
+            )
         }
 
         // SSE endpoint for chess updates
@@ -737,148 +964,28 @@ fun Application.configureRouting() {
             val lang = call.getLanguage()
 
             player.lang = lang
-            while (player.channel.tryReceive().isSuccess) {
-                // Discard old messages
-            }
-
-            val connectionId = player.startNewConnection()
             game.handlePlayerReconnect(session.id)
 
-            var connectionAlive = true
-            val pingJob =
-                launch {
-                    while (isActive && connectionAlive) {
-                        delay(SSE_PING_INTERVAL_MS)
-                        try {
-                            send(ServerSentEvent("ping", event = "ping"))
-                        } catch (_: Exception) {
-                            connectionAlive = false
-                            player.channel.trySend("__CONNECTION_CHECK__")
-                            break
+            runRealtimeSseSession(
+                player = player,
+                logLabel = "Chess SSE",
+                sendEvent = { html -> send(ServerSentEvent(html, event = "chess-update")) },
+                sendPing = { send(ServerSentEvent("ping", event = "ping")) },
+                notifyOthersOnConnect = {
+                    game.players.values
+                        .filter { it.connected && it.sessionId != session.id }
+                        .forEach { other ->
+                            other.channel.trySend(renderChessState(game, other.sessionId, other.lang))
                         }
-                    }
-                }
-
-            try {
-                game.players.values
-                    .filter { it.connected && it.sessionId != session.id }
-                    .forEach { other ->
-                        other.channel.trySend(renderChessState(game, other.sessionId, other.lang))
-                    }
-
-                send(ServerSentEvent(renderChessState(game, session.id, lang), event = "chess-update"))
-
-                val refreshJob =
-                    launch {
-                        delay(100)
-                        if (connectionId == player.currentConnectionId && connectionAlive) {
-                            try {
-                                send(ServerSentEvent(renderChessState(game, session.id, lang), event = "chess-update"))
-                            } catch (_: Exception) {
-                                // Connection might be closed, ignore
-                            }
-                        }
-                    }
-
-                for (message in player.channel) {
-                    if (!connectionAlive) break
-                    if (message == "__CONNECTION_CHECK__") continue
-                    if (connectionId != player.currentConnectionId) break
-                    send(ServerSentEvent(message, event = "chess-update"))
-                }
-
-                refreshJob.cancel()
-            } catch (_: ClosedReceiveChannelException) {
-                // Normal disconnect
-            } catch (e: Exception) {
-                logger.warn("Chess SSE error for {}: {}", player.name, e.message)
-            } finally {
-                pingJob.cancel()
-                player.endConnection(connectionId)
-
-                if (!player.connected) {
+                },
+                renderInitialState = { renderChessState(game, session.id, lang) },
+                onDisconnect = {
                     val changed = game.handlePlayerDisconnect(session.id)
                     if (changed) {
                         game.broadcastToAllConnected(::renderChessState)
                     }
-                }
-            }
-        }
-
-        // Check for expired grace periods (called by client countdown timer)
-        post("/game/{gameId}/check-disconnects") {
-            val gameId = call.parameters["gameId"] ?: return@post
-            val game = GameManager.getGame(gameId) ?: return@post
-
-            // Check all disconnected players for expired grace periods
-            // Make a copy to avoid ConcurrentModificationException
-            var stateChanged = false
-            val expiredPlayers =
-                game.allPlayers
-                    .filter { !it.connected && !it.isWithinGracePeriod() }
-                    .map { it.sessionId }
-
-            expiredPlayers.forEach { sessionId ->
-                if (game.handleGracePeriodExpired(sessionId)) {
-                    stateChanged = true
-                }
-            }
-
-            if (stateChanged) {
-                game.broadcastToAllConnected(::renderGameState)
-            }
-
-            call.respondText("OK")
-        }
-
-        // Check for expired grace periods in chess
-        post("/chess/{gameId}/check-disconnects") {
-            val gameId = call.parameters["gameId"] ?: return@post
-            val game = ChessGameManager.getGame(gameId) ?: return@post
-
-            var stateChanged = false
-            val expiredPlayers =
-                game.allPlayers
-                    .filter { !it.connected && !it.isWithinGracePeriod() }
-                    .map { it.sessionId }
-
-            expiredPlayers.forEach { sessionId ->
-                if (game.handleGracePeriodExpired(sessionId)) {
-                    stateChanged = true
-                }
-            }
-
-            if (stateChanged) {
-                game.broadcastToAllConnected(::renderChessState)
-            }
-
-            call.respondText("OK")
-        }
-
-        post("/chess/{gameId}/check-time") {
-            val session = call.sessions.get<UserSession>() ?: return@post
-            val gameId = call.parameters["gameId"] ?: return@post
-            val game = ChessGameManager.getGame(gameId) ?: return@post
-            if (game.players[session.id] == null) {
-                call.respondText("Forbidden", status = HttpStatusCode.Forbidden)
-                return@post
-            }
-            game.applyTurnClockTick()
-            val changed = game.checkTurnTimeout()
-            if (changed) {
-                game.broadcastToAllConnected(::renderChessState)
-            }
-            call.respondText("OK")
-        }
-
-        post("/chess/{gameId}/check-auto-restart") {
-            val gameId = call.parameters["gameId"] ?: return@post
-            val game = ChessGameManager.getGame(gameId) ?: return@post
-            if (game.shouldAutoRestartNow()) {
-                game.resetForNewGame()
-                game.broadcastToAllConnected(::renderChessState)
-            }
-            call.respondText("OK")
+                },
+            )
         }
 
         // Start the game
@@ -924,7 +1031,6 @@ fun Application.configureRouting() {
             // Auto-resolve if no one can guess (e.g., all others are spectators)
             if (game.allActivePlayersGuessed()) {
                 game.resolveRound()
-                scheduleRoundAdvance(game)
             }
 
             // Broadcast to all connected players
@@ -955,7 +1061,6 @@ fun Application.configureRouting() {
             // Check if all players have guessed
             if (game.allActivePlayersGuessed()) {
                 game.resolveRound()
-                scheduleRoundAdvance(game)
             }
 
             // Broadcast to all connected players

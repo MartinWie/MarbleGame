@@ -223,7 +223,7 @@ object Translations {
                     "home.chess.option.timed.hint" to "Jeder Spieler hat X Minuten.",
                     "home.chess.option.clockMinutes" to "Uhr (Minuten pro Spieler)",
                     "home.chess.option.streamer" to "Streamer-Modus",
-                    "home.chess.option.streamer.hint" to "Der Creator bleibt im spiel. Zuschauer rotieren nach jedem spiel.",
+                    "home.chess.option.streamer.hint" to "Der Creator bleibt im spiel. Jede Runde ein neuer Gegner aus den Zuschauern.",
                     "home.chooseMode" to "Spiel wählen",
                     "home.chooseModeHint" to "Spiel auswählen.",
                     "home.pickGameFirst" to "Spiel wählen.",

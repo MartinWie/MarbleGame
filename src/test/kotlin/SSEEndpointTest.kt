@@ -1,11 +1,14 @@
 package de.mw
 
 import io.ktor.client.plugins.cookies.*
+import io.ktor.client.plugins.websocket.*
 import io.ktor.client.request.*
 import io.ktor.client.request.forms.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.server.testing.*
+import io.ktor.websocket.*
+import kotlinx.coroutines.withTimeout
 import kotlin.test.*
 
 /**
@@ -87,7 +90,7 @@ class SSEEndpointTest {
         }
 
     @Test
-    fun `chess check-time requires game membership`() =
+    fun `chess legal-moves returns empty for non participant`() =
         testApplication {
             application { module() }
 
@@ -114,11 +117,166 @@ class SSEEndpointTest {
                     followRedirects = false
                 }
             outsiderClient.get("/")
-            val forbidden = outsiderClient.post("/chess/$gameId/check-time")
-            assertEquals(HttpStatusCode.Forbidden, forbidden.status)
+            val forbidden = outsiderClient.get("/chess/$gameId/legal-moves?from=e2")
+            assertEquals(HttpStatusCode.OK, forbidden.status)
+            assertEquals("", forbidden.bodyAsText())
 
-            val ownerResult = ownerClient.post("/chess/$gameId/check-time")
-            assertEquals(HttpStatusCode.OK, ownerResult.status)
+            val ownerWhiteResult = ownerClient.get("/chess/$gameId/legal-moves?from=e2")
+            assertEquals(HttpStatusCode.OK, ownerWhiteResult.status)
+            val ownerBlackResult = ownerClient.get("/chess/$gameId/legal-moves?from=e7")
+            assertEquals(HttpStatusCode.OK, ownerBlackResult.status)
+
+            ChessGameManager.removeGame(gameId)
+        }
+
+    @Test
+    fun `chess page exposes realtime transport meta`() =
+        testApplication {
+            application { module() }
+
+            val client =
+                createClient {
+                    install(HttpCookies)
+                    followRedirects = false
+                }
+
+            client.get("/")
+            val createResponse =
+                client.submitForm(
+                    url = "/chess/create",
+                    formParameters = parameters { append("playerName", "MetaHost") },
+                )
+
+            val chessUrl = createResponse.headers["Location"]!!
+            val gameResponse = client.get(chessUrl)
+            val body = gameResponse.bodyAsText()
+
+            val gameId = chessUrl.substringAfterLast("/chess/")
+
+            assertTrue(body.contains("meta name=\"realtime-transport\""))
+
+            ChessGameManager.removeGame(gameId)
+        }
+
+    @Test
+    fun `chess websocket endpoint emits ping and update frames`() =
+        testApplication {
+            application { module() }
+
+            val ownerClient =
+                createClient {
+                    install(HttpCookies)
+                    install(WebSockets)
+                    followRedirects = false
+                }
+            ownerClient.get("/")
+            val createResponse =
+                ownerClient.submitForm(
+                    url = "/chess/create",
+                    formParameters = parameters { append("playerName", "WsOwner") },
+                )
+            val gameId = createResponse.headers["Location"]!!.substringAfterLast("/chess/")
+
+            ownerClient.webSocket("/ws/chess/$gameId") {
+                var sawPing = false
+                var sawUpdate = false
+
+                withTimeout(15_000) {
+                    while (!sawPing || !sawUpdate) {
+                        val frame = incoming.receive() as? Frame.Text ?: continue
+                        val text = frame.readText()
+                        if (text == "__PING__") {
+                            sawPing = true
+                        }
+                        if (text.startsWith("__CHESS_UPDATE__:")) {
+                            sawUpdate = true
+                        }
+                    }
+                }
+
+                assertTrue(sawUpdate)
+                assertTrue(sawPing)
+            }
+
+            ChessGameManager.removeGame(gameId)
+        }
+
+    @Test
+    fun `marbles websocket endpoint emits ping and update frames`() =
+        testApplication {
+            application { module() }
+
+            val ownerClient =
+                createClient {
+                    install(HttpCookies)
+                    install(WebSockets)
+                    followRedirects = false
+                }
+            ownerClient.get("/")
+            val createResponse =
+                ownerClient.submitForm(
+                    url = "/game/create",
+                    formParameters = parameters { append("playerName", "WsOwner") },
+                )
+            val gameId = createResponse.headers["Location"]!!.substringAfterLast("/game/")
+
+            ownerClient.webSocket("/ws/game/$gameId") {
+                var sawPing = false
+                var sawUpdate = false
+
+                withTimeout(15_000) {
+                    while (!sawPing || !sawUpdate) {
+                        val frame = incoming.receive() as? Frame.Text ?: continue
+                        val text = frame.readText()
+                        if (text == "__PING__") {
+                            sawPing = true
+                        }
+                        if (text.startsWith("__GAME_UPDATE__:")) {
+                            sawUpdate = true
+                        }
+                    }
+                }
+
+                assertTrue(sawUpdate)
+                assertTrue(sawPing)
+            }
+
+            GameManager.removeGame(gameId)
+        }
+
+    @Test
+    fun `server maintenance ticker auto-restarts chess game over`() =
+        testApplication {
+            application { module() }
+
+            val client =
+                createClient {
+                    install(HttpCookies)
+                    followRedirects = false
+                }
+
+            client.get("/")
+            val createResponse =
+                client.submitForm(
+                    url = "/chess/create",
+                    formParameters = parameters { append("playerName", "TickerHost") },
+                )
+            val gameId = createResponse.headers["Location"]!!.substringAfterLast("/chess/")
+            val game = ChessGameManager.getGame(gameId) ?: error("Game not found")
+
+            game.forceGameOverForTesting(winnerSessionId = null, reason = "stalemate")
+            game.scheduleAutoRestart(delaySeconds = 1)
+
+            var restarted = false
+            repeat(30) {
+                Thread.sleep(100)
+                if (game.phase != ChessPhase.GAME_OVER) {
+                    restarted = true
+                    return@repeat
+                }
+            }
+
+            assertTrue(restarted)
 
             ChessGameManager.removeGame(gameId)
         }

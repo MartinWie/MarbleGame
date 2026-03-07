@@ -5,9 +5,15 @@ function initChess(gameId) {
 
     var chessContent = document.getElementById('chess-content');
     var eventSource = null;
+    var webSocket = null;
     var countdownInterval = null;
     var reconnectTimeout = null;
     var isConnecting = false;
+    var transportMode = detectTransportMode();
+    var wsFailed = false;
+    var reconnectDelayMs = 1000;
+    var wsRetryAt = 0;
+    var connectWatchdogTimeout = null;
     var lastPingTime = Date.now();
     var pingCheckInterval = null;
     var selectedFrom = null;
@@ -27,7 +33,6 @@ function initChess(gameId) {
     var usePointerTouch = !!window.PointerEvent;
     var lastUpdateAt = Date.now();
     var chessClockInterval = null;
-    var autoRestartInterval = null;
     var moveInFlight = false;
     var soundMuted = localStorage.getItem('marblegame_sound_muted') === '1';
     var audioCtx = null;
@@ -36,6 +41,46 @@ function initChess(gameId) {
     var lastAnimatedMoveMeta = '';
     var soundOnIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-volume-up" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M11.536 14.01A8.47 8.47 0 0 0 14.026 8a8.47 8.47 0 0 0-2.49-6.01l-.708.707A7.48 7.48 0 0 1 13.025 8c0 2.071-.84 3.946-2.197 5.303z"/><path d="M10.121 12.596A6.48 6.48 0 0 0 12.025 8a6.48 6.48 0 0 0-1.904-4.596l-.707.707A5.48 5.48 0 0 1 11.025 8a5.48 5.48 0 0 1-1.61 3.89z"/><path d="M10.025 8a4.5 4.5 0 0 1-1.318 3.182L8 10.475A3.5 3.5 0 0 0 9.025 8c0-.966-.392-1.841-1.025-2.475l.707-.707A4.5 4.5 0 0 1 10.025 8M7 4a.5.5 0 0 0-.812-.39L3.825 5.5H1.5A.5.5 0 0 0 1 6v4a.5.5 0 0 0 .5.5h2.325l2.363 1.89A.5.5 0 0 0 7 12zM4.312 6.39 6 5.04v5.92L4.312 9.61A.5.5 0 0 0 4 9.5H2v-3h2a.5.5 0 0 0 .312-.11"/></svg>';
     var soundMutedIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-volume-mute-fill" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6.717 3.55A.5.5 0 0 1 7 4v8a.5.5 0 0 1-.812.39L3.825 10.5H1.5A.5.5 0 0 1 1 10V6a.5.5 0 0 1 .5-.5h2.325l2.363-1.89a.5.5 0 0 1 .529-.06m7.137 2.096a.5.5 0 0 1 0 .708L12.207 8l1.647 1.646a.5.5 0 0 1-.708.708L11.5 8.707l-1.646 1.647a.5.5 0 0 1-.708-.708L10.793 8 9.146 6.354a.5.5 0 1 1 .708-.708L11.5 7.293l1.646-1.647a.5.5 0 0 1 .708 0"/></svg>';
+
+    function detectTransportMode() {
+        var meta = document.querySelector('meta[name="realtime-transport"]');
+        var mode = meta ? ((meta.getAttribute('content') || '').toLowerCase()) : 'auto';
+        if (mode !== 'ws' && mode !== 'sse' && mode !== 'auto') return 'auto';
+        return mode;
+    }
+
+    function shouldTryWs() {
+        if (transportMode === 'sse') return false;
+        if (transportMode === 'auto' && wsFailed && Date.now() < wsRetryAt) return false;
+        return typeof window.WebSocket === 'function';
+    }
+
+    function wsUrl(path) {
+        var proto = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+        return proto + window.location.host + path;
+    }
+
+    function closeRealtimeConnection() {
+        if (connectWatchdogTimeout) {
+            clearTimeout(connectWatchdogTimeout);
+            connectWatchdogTimeout = null;
+        }
+        if (eventSource) {
+            eventSource.onerror = null;
+            eventSource.close();
+            eventSource = null;
+        }
+        if (webSocket) {
+            webSocket.onopen = null;
+            webSocket.onmessage = null;
+            webSocket.onerror = null;
+            webSocket.onclose = null;
+            try {
+                webSocket.close();
+            } catch (_) {}
+            webSocket = null;
+        }
+    }
 
     function bindShareButton() {
         var shareBtn = document.getElementById('share-btn');
@@ -240,9 +285,18 @@ function initChess(gameId) {
                 if (seconds <= 0) {
                     el.dataset.fired = 'true';
                     el.dataset.seconds = '0';
-                    fetch('/chess/' + gameId + '/check-disconnects', { method: 'POST' });
                 }
             });
+
+            var autoRestartLine = document.querySelector('.auto-restart-line');
+            if (autoRestartLine && autoRestartLine.dataset.seconds) {
+                var s = parseInt(autoRestartLine.dataset.seconds, 10);
+                if (!isNaN(s) && s > 0) {
+                    autoRestartLine.dataset.seconds = String(s - 1);
+                    var txt = autoRestartLine.textContent || '';
+                    autoRestartLine.textContent = txt.replace(/\d+s/, (s - 1) + 's');
+                }
+            }
         }, 1000);
 
         var boardEl = document.querySelector('.chess-board');
@@ -253,22 +307,9 @@ function initChess(gameId) {
         }
         if (timedMode) {
             chessClockInterval = setInterval(function() {
-                fetch('/chess/' + gameId + '/check-time', { method: 'POST' })
-                    .then(function(response) {
-                        if (response.ok) updateLocalClockLine();
-                    })
-                    .catch(function() {});
+                updateLocalClockLine();
             }, 1000);
         }
-
-        if (autoRestartInterval) {
-            clearInterval(autoRestartInterval);
-            autoRestartInterval = null;
-        }
-        autoRestartInterval = setInterval(function() {
-            var line = document.querySelector('.auto-restart-line');
-            fetch('/chess/' + gameId + '/check-auto-restart', { method: 'POST' }).catch(function() {});
-        }, 1000);
     }
 
     function updateLocalClockLine() {
@@ -307,66 +348,83 @@ function initChess(gameId) {
         }
     }
 
-    function connect() {
-        if (isConnecting) return;
-        isConnecting = true;
-
-        if (reconnectTimeout) {
-            clearTimeout(reconnectTimeout);
-            reconnectTimeout = null;
+    function handleChessUpdate(data) {
+        lastUpdateAt = Date.now();
+        moveInFlight = false;
+        var prevTurn = previousTurnColor;
+        var previousSnapshot = boardSnapshot;
+        var patched = patchIncrementalState(data);
+        if (!patched) {
+            chessContent.innerHTML = data;
         }
-
-        if (eventSource) {
-            eventSource.close();
-            eventSource = null;
+        htmx.process(chessContent);
+        selectedFrom = null;
+        legalTargets = [];
+        legalTargetSet = {};
+        updateMoveUI();
+        bindShareButton();
+        bindSoundButton();
+        bindQrButton();
+        bindBoardInteractions();
+        boardSnapshot = captureBoardSnapshot();
+        var boardEl = document.querySelector('.chess-board');
+        if (boardEl) {
+            previousTurnColor = boardEl.getAttribute('data-turn') || '';
+            if (!boardEl.getAttribute('data-last-move-meta')) {
+                lastAnimatedMoveMeta = '';
+            }
+            var myColor = boardEl.getAttribute('data-your-color') || '';
+            if (prevTurn && previousTurnColor && prevTurn !== previousTurnColor && myColor === previousTurnColor) {
+                playYourTurnSound();
+            }
+            var moveMeta = boardEl.getAttribute('data-last-move-meta') || '';
+            if (moveMeta && moveMeta !== lastAnimatedMoveMeta) {
+                playMoveAnimations(previousSnapshot);
+                lastAnimatedMoveMeta = moveMeta;
+            }
         }
+        if (!prevTurn && previousTurnColor) {
+            playRoundStartSound();
+        }
+        startCountdowns();
+    }
 
+    function scheduleReconnect() {
+        if (!reconnectTimeout) {
+            var delay = reconnectDelayMs;
+            var jitter = Math.floor(Math.random() * 250);
+            var waitMs = delay + jitter;
+            reconnectTimeout = setTimeout(function() {
+                reconnectTimeout = null;
+                connect();
+            }, waitMs);
+            reconnectDelayMs = Math.min(30000, reconnectDelayMs * 2);
+        }
+    }
+
+    function connectSse() {
         eventSource = new EventSource('/chess/' + gameId + '/events');
         lastPingTime = Date.now();
 
+        connectWatchdogTimeout = setTimeout(function() {
+            if (isConnecting && eventSource && eventSource.readyState !== EventSource.OPEN) {
+                isConnecting = false;
+                closeRealtimeConnection();
+                scheduleReconnect();
+            }
+        }, 10000);
+
         eventSource.addEventListener('open', function() {
             isConnecting = false;
+            reconnectDelayMs = 1000;
+            if (connectWatchdogTimeout) {
+                clearTimeout(connectWatchdogTimeout);
+                connectWatchdogTimeout = null;
+            }
         });
 
         eventSource.addEventListener('chess-update', function(e) {
-            lastUpdateAt = Date.now();
-            moveInFlight = false;
-            var prevTurn = previousTurnColor;
-            var previousSnapshot = boardSnapshot;
-            var patched = patchIncrementalState(e.data);
-            if (!patched) {
-                chessContent.innerHTML = e.data;
-            }
-            htmx.process(chessContent);
-            selectedFrom = null;
-            legalTargets = [];
-            legalTargetSet = {};
-            updateMoveUI();
-            bindShareButton();
-            bindSoundButton();
-            bindQrButton();
-            bindBoardInteractions();
-            boardSnapshot = captureBoardSnapshot();
-            var boardEl = document.querySelector('.chess-board');
-            if (boardEl) {
-                previousTurnColor = boardEl.getAttribute('data-turn') || '';
-                if (!boardEl.getAttribute('data-last-move-meta')) {
-                    lastAnimatedMoveMeta = '';
-                }
-                var myColor = boardEl.getAttribute('data-your-color') || '';
-                if (prevTurn && previousTurnColor && prevTurn !== previousTurnColor && myColor === previousTurnColor) {
-                    playYourTurnSound();
-                }
-                var moveMeta = boardEl.getAttribute('data-last-move-meta') || '';
-                if (moveMeta && moveMeta !== lastAnimatedMoveMeta) {
-                    playMoveAnimations(previousSnapshot);
-                    lastAnimatedMoveMeta = moveMeta;
-                }
-            }
-            if (!prevTurn && previousTurnColor) {
-                playRoundStartSound();
-            }
-            startCountdowns();
+            handleChessUpdate(e.data);
         });
 
         eventSource.addEventListener('ping', function() {
@@ -376,17 +434,91 @@ function initChess(gameId) {
         eventSource.onerror = function() {
             isConnecting = false;
             moveInFlight = false;
-            if (eventSource) {
-                eventSource.close();
-                eventSource = null;
+            if (connectWatchdogTimeout) {
+                clearTimeout(connectWatchdogTimeout);
+                connectWatchdogTimeout = null;
             }
-            if (!reconnectTimeout) {
-                reconnectTimeout = setTimeout(function() {
-                    reconnectTimeout = null;
-                    connect();
-                }, 1000);
+            closeRealtimeConnection();
+            scheduleReconnect();
+        };
+    }
+
+    function connectWs() {
+        webSocket = new WebSocket(wsUrl('/ws/chess/' + gameId));
+        lastPingTime = Date.now();
+
+        connectWatchdogTimeout = setTimeout(function() {
+            if (isConnecting && webSocket && webSocket.readyState === WebSocket.CONNECTING) {
+                isConnecting = false;
+                if (transportMode === 'auto') {
+                    wsFailed = true;
+                    wsRetryAt = Date.now() + 120000;
+                }
+                closeRealtimeConnection();
+                scheduleReconnect();
+            }
+        }, 10000);
+
+        webSocket.onopen = function() {
+            isConnecting = false;
+            wsFailed = false;
+            wsRetryAt = 0;
+            reconnectDelayMs = 1000;
+            if (connectWatchdogTimeout) {
+                clearTimeout(connectWatchdogTimeout);
+                connectWatchdogTimeout = null;
             }
         };
+
+        webSocket.onmessage = function(e) {
+            var text = typeof e.data === 'string' ? e.data : '';
+            if (!text) return;
+            if (text === '__PING__') {
+                lastPingTime = Date.now();
+                return;
+            }
+            if (text.indexOf('__CHESS_UPDATE__:') === 0) {
+                lastPingTime = Date.now();
+                handleChessUpdate(text.slice('__CHESS_UPDATE__:'.length));
+            }
+        };
+
+        webSocket.onerror = function() {
+            // Keep reconnect logic centralized in onclose.
+        };
+
+        webSocket.onclose = function() {
+            isConnecting = false;
+            moveInFlight = false;
+            if (connectWatchdogTimeout) {
+                clearTimeout(connectWatchdogTimeout);
+                connectWatchdogTimeout = null;
+            }
+            closeRealtimeConnection();
+            if (transportMode === 'auto') {
+                wsFailed = true;
+                wsRetryAt = Date.now() + 120000;
+            }
+            scheduleReconnect();
+        };
+    }
+
+    function connect() {
+        if (isConnecting) return;
+        isConnecting = true;
+
+        if (reconnectTimeout) {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = null;
+        }
+
+        closeRealtimeConnection();
+
+        if (shouldTryWs()) {
+            connectWs();
+        } else {
+            connectSse();
+        }
     }
 
     function patchIncrementalState(newHtml) {
@@ -397,6 +529,19 @@ function initChess(gameId) {
         tmp.innerHTML = newHtml;
         var incomingBoard = tmp.querySelector('.chess-board');
         if (!incomingBoard) return false;
+
+        var currentPerspective = currentBoard.getAttribute('data-perspective') || 'white';
+        var incomingPerspective = incomingBoard.getAttribute('data-perspective') || 'white';
+        if (currentPerspective !== incomingPerspective) return false;
+
+        var currentYourColor = currentBoard.getAttribute('data-your-color') || '';
+        var incomingYourColor = incomingBoard.getAttribute('data-your-color') || '';
+        if (currentYourColor !== incomingYourColor) return false;
+
+        var currentFirstSquare = currentBoard.querySelector('.chess-square');
+        var incomingFirstSquare = incomingBoard.querySelector('.chess-square');
+        if (!currentFirstSquare || !incomingFirstSquare) return false;
+        if (currentFirstSquare.getAttribute('data-square') !== incomingFirstSquare.getAttribute('data-square')) return false;
 
         patchBoardSquares(currentBoard, incomingBoard);
 
@@ -1506,9 +1651,8 @@ function initChess(gameId) {
     window.addEventListener('beforeunload', function() {
         if (countdownInterval) clearInterval(countdownInterval);
         if (chessClockInterval) clearInterval(chessClockInterval);
-        if (autoRestartInterval) clearInterval(autoRestartInterval);
         if (pingCheckInterval) clearInterval(pingCheckInterval);
         if (reconnectTimeout) clearTimeout(reconnectTimeout);
-        if (eventSource) eventSource.close();
+        closeRealtimeConnection();
     });
 }

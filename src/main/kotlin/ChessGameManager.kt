@@ -52,6 +52,8 @@ object ChessGameManager {
 
     fun gameCount(): Int = games.size
 
+    fun allGames(): List<ChessGame> = games.values.toList()
+
     fun cleanupOldGames() {
         val now = System.currentTimeMillis()
         val toRemove = mutableListOf<String>()

@@ -125,6 +125,8 @@ object GameManager {
      */
     fun gameCount(): Int = games.size
 
+    fun allGames(): List<Game> = games.values.toList()
+
     /**
      * Cleans up old/abandoned games based on their TTL.
      *

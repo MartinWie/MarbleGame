@@ -275,7 +275,7 @@ test.describe('Host Switch Logic', () => {
       }).toPass({ timeout: 10000 });
       
       // Wait for the countdown to expire and host to transfer
-      // Grace period is 15s, countdown ticks down client-side, then /check-disconnects is called
+      // Grace period is 15s and the server maintenance ticker handles disconnect expiry
       // Either Player2 OR Player3 can become the new host (HashMap iteration order is non-deterministic)
       await expect(async () => {
         const p2SeesStart = await player2.page.locator('button:has-text("Start Game")').isVisible().catch(() => false);
@@ -582,8 +582,7 @@ test.describe('Winner Determination', () => {
         expect(p2Countdown || p3Countdown).toBe(true);
       }).toPass({ timeout: 10000 });
       
-      // Wait for grace period (15s) to expire + buffer for SSE update
-      // The client-side countdown triggers /check-disconnects when it reaches 0
+      // Wait for grace period (15s) to expire + buffer for server maintenance ticker and SSE update
       await player2.page.waitForTimeout(18000);
       
       // After host disconnect, remaining players should still see the game over screen

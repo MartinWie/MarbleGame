@@ -312,6 +312,9 @@ fun HTML.renderGamePage(
         title = "${"game.title".t(lang)} - ${game.id}",
         lang = lang,
         includeHtmx = true,
+        extraHead = {
+            meta(name = "realtime-transport", content = RealtimeConfig.transportMode)
+        },
         extraBodyContent = {
             // Load game script and initialize with game ID
             script(src = "/static/game.js") {}

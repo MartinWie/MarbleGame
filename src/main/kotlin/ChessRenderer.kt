@@ -13,6 +13,9 @@ fun HTML.renderChessPage(
         lang = lang,
         includeHtmx = true,
         containerClasses = "container chess-container",
+        extraHead = {
+            meta(name = "realtime-transport", content = RealtimeConfig.transportMode)
+        },
         extraBodyContent = {
             script(src = "/static/chess.js") {}
             script {
@@ -226,6 +229,7 @@ fun renderChessState(
                             val sec = game.autoRestartSecondsRemaining()
                             if (sec > 0) {
                                 p("hint auto-restart-line") {
+                                    attributes["data-seconds"] = sec.toString()
                                     +"chess.autoRestart".t(lang, sec)
                                 }
                             }

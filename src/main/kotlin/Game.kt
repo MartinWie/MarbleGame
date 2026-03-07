@@ -154,6 +154,7 @@ class Game(
     // ==================== Player Accessors ====================
 
     /** The player whose turn it currently is, or null if no players. */
+    @get:Synchronized
     val currentPlayer: Player?
         get() {
             if (playerOrder.isEmpty()) return null
@@ -162,10 +163,12 @@ class Game(
         }
 
     /** All players with marbles (regardless of connection status). */
+    @get:Synchronized
     val activePlayers: List<Player>
         get() = playerOrder.mapNotNull { players[it] }.filter { it.isActive }
 
     /** Players who are active AND currently connected. */
+    @get:Synchronized
     val connectedActivePlayers: List<Player>
         get() = playerOrder.mapNotNull { players[it] }.filter { it.isActiveAndConnected }
 
@@ -175,14 +178,17 @@ class Game(
      * Used for game-over checks to avoid ending the game when a player
      * is temporarily disconnected.
      */
+    @get:Synchronized
     val availableActivePlayers: List<Player>
         get() = playerOrder.mapNotNull { players[it] }.filter { it.isActive && (it.connected || it.isWithinGracePeriod()) }
 
     /** All players in the current game (in turn order). */
+    @get:Synchronized
     val allPlayers: List<Player>
         get() = playerOrder.mapNotNull { players[it] }
 
     /** Players waiting to join next round. */
+    @get:Synchronized
     val pendingPlayers: List<Player>
         get() = pendingPlayerOrder.mapNotNull { players[it] }
 
@@ -206,6 +212,7 @@ class Game(
      * @param name The player's display name
      * @return The created Player object
      */
+    @Synchronized
     fun addPendingPlayer(
         sessionId: String,
         name: String,
@@ -246,6 +253,7 @@ class Game(
      * @param lang The player's language preference
      * @return The created Player object
      */
+    @Synchronized
     fun addPlayer(
         sessionId: String,
         name: String,
@@ -265,6 +273,7 @@ class Game(
      *
      * @param sessionId The player's session ID
      */
+    @Synchronized
     fun removePlayer(sessionId: String) {
         players.remove(sessionId)
         playerOrder.remove(sessionId)
@@ -280,6 +289,7 @@ class Game(
      *
      * @param sessionId The reconnecting player's session ID
      */
+    @Synchronized
     fun handlePlayerReconnect(sessionId: String) {
         val player = players[sessionId] ?: return
 
@@ -302,6 +312,7 @@ class Game(
      *
      * @return `true` if game started successfully, `false` if not enough players
      */
+    @Synchronized
     fun startGame(): Boolean {
         touch()
         val connectedPlayerIndices =
@@ -323,6 +334,7 @@ class Game(
      * @param amount Number of marbles to place (1 to player's total)
      * @return `true` if placement was valid
      */
+    @Synchronized
     fun placeMarbles(
         sessionId: String,
         amount: Int,
@@ -348,6 +360,7 @@ class Game(
      * @param guess EVEN or ODD
      * @return `true` if guess was recorded
      */
+    @Synchronized
     fun makeGuess(
         sessionId: String,
         guess: Guess,
@@ -369,6 +382,7 @@ class Game(
      *
      * @return `true` if round can be resolved
      */
+    @Synchronized
     fun allActivePlayersGuessed(): Boolean {
         val guessingPlayers = connectedActivePlayers.filter { it.sessionId != currentPlayer?.sessionId }
         return guessingPlayers.all { it.currentGuess != null }
@@ -382,6 +396,7 @@ class Game(
      *
      * @return The round result, or null if not in GUESSING phase
      */
+    @Synchronized
     fun resolveRound(): RoundResult? {
         val placer = currentPlayer ?: return null
         if (phase != GamePhase.GUESSING) return null
@@ -452,6 +467,7 @@ class Game(
      *
      * @return `true` if game continues, `false` if game over or not in ROUND_RESULT phase
      */
+    @Synchronized
     fun nextRound(): Boolean {
         // Guard: only advance if we're actually in ROUND_RESULT phase
         // This prevents race conditions from multiple clients calling simultaneously
@@ -480,6 +496,7 @@ class Game(
      *
      * @return Remaining seconds, or 0 if countdown has passed or not in ROUND_RESULT phase
      */
+    @Synchronized
     fun roundResultCooldownRemaining(): Int {
         if (phase != GamePhase.ROUND_RESULT) return 0
         val timestamp = roundResultTimestamp ?: return 0
@@ -514,6 +531,7 @@ class Game(
      *
      * @return The winning player, or null if game not over
      */
+    @Synchronized
     fun getWinner(): Player? {
         if (phase != GamePhase.GAME_OVER) return null
         // Use stored winner if available
@@ -533,6 +551,7 @@ class Game(
      * @param sessionId The disconnected player's session ID
      * @return `true` if game state changed and broadcast is needed
      */
+    @Synchronized
     fun handlePlayerDisconnect(sessionId: String): Boolean {
         val player = players[sessionId] ?: return false
 
@@ -594,6 +613,7 @@ class Game(
      * @param sessionId The player whose grace period expired
      * @return `true` if game state changed and broadcast is needed
      */
+    @Synchronized
     fun handleGracePeriodExpired(sessionId: String): Boolean {
         val player = players[sessionId] ?: return false
 
@@ -699,6 +719,7 @@ class Game(
      *
      * @return `true` if game started immediately, `false` if waiting for more players
      */
+    @Synchronized
     fun resetForNewGame(): Boolean {
         currentPlayerIndex = 0
         currentMarblesPlaced = 0
@@ -744,6 +765,7 @@ class Game(
      * Closes all player channels to ensure coroutines waiting on them
      * are properly notified and resources are released immediately.
      */
+    @Synchronized
     fun cleanup() {
         players.values.forEach { player ->
             runCatching { player.channel.close() }

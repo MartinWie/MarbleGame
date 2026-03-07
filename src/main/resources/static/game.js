@@ -23,6 +23,11 @@ function initGame(gameId) {
     var previousMarbleCount = null;
     var reconnectTimeout = null;
     var isConnecting = false;
+    var webSocket = null;
+    var transportMode = detectTransportMode();
+    var wsFailed = false;
+    var reconnectDelayMs = 1000;
+    var wsRetryAt = 0;
     var soundMuted = localStorage.getItem('marblegame_sound_muted') === '1';
     var audioCtx = null;
     var audioUnlocked = false;
@@ -30,6 +35,42 @@ function initGame(gameId) {
     var lastYourTurn = false;
     var soundOnIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-volume-up" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M11.536 14.01A8.47 8.47 0 0 0 14.026 8a8.47 8.47 0 0 0-2.49-6.01l-.708.707A7.48 7.48 0 0 1 13.025 8c0 2.071-.84 3.946-2.197 5.303z"/><path d="M10.121 12.596A6.48 6.48 0 0 0 12.025 8a6.48 6.48 0 0 0-1.904-4.596l-.707.707A5.48 5.48 0 0 1 11.025 8a5.48 5.48 0 0 1-1.61 3.89z"/><path d="M10.025 8a4.5 4.5 0 0 1-1.318 3.182L8 10.475A3.5 3.5 0 0 0 9.025 8c0-.966-.392-1.841-1.025-2.475l.707-.707A4.5 4.5 0 0 1 10.025 8M7 4a.5.5 0 0 0-.812-.39L3.825 5.5H1.5A.5.5 0 0 0 1 6v4a.5.5 0 0 0 .5.5h2.325l2.363 1.89A.5.5 0 0 0 7 12zM4.312 6.39 6 5.04v5.92L4.312 9.61A.5.5 0 0 0 4 9.5H2v-3h2a.5.5 0 0 0 .312-.11"/></svg>';
     var soundMutedIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-volume-mute-fill" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6.717 3.55A.5.5 0 0 1 7 4v8a.5.5 0 0 1-.812.39L3.825 10.5H1.5A.5.5 0 0 1 1 10V6a.5.5 0 0 1 .5-.5h2.325l2.363-1.89a.5.5 0 0 1 .529-.06m7.137 2.096a.5.5 0 0 1 0 .708L12.207 8l1.647 1.646a.5.5 0 0 1-.708.708L11.5 8.707l-1.646 1.647a.5.5 0 0 1-.708-.708L10.793 8 9.146 6.354a.5.5 0 1 1 .708-.708L11.5 7.293l1.646-1.647a.5.5 0 0 1 .708 0"/></svg>';
+
+    function detectTransportMode() {
+        var meta = document.querySelector('meta[name="realtime-transport"]');
+        var mode = meta ? ((meta.getAttribute('content') || '').toLowerCase()) : 'auto';
+        if (mode !== 'ws' && mode !== 'sse' && mode !== 'auto') return 'auto';
+        return mode;
+    }
+
+    function shouldTryWs() {
+        if (transportMode === 'sse') return false;
+        if (transportMode === 'auto' && wsFailed && Date.now() < wsRetryAt) return false;
+        return typeof window.WebSocket === 'function';
+    }
+
+    function wsUrl(path) {
+        var proto = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+        return proto + window.location.host + path;
+    }
+
+    function closeRealtimeConnection() {
+        if (eventSource) {
+            eventSource.onerror = null;
+            eventSource.close();
+            eventSource = null;
+        }
+        if (webSocket) {
+            webSocket.onopen = null;
+            webSocket.onmessage = null;
+            webSocket.onerror = null;
+            webSocket.onclose = null;
+            try {
+                webSocket.close();
+            } catch (_) {}
+            webSocket = null;
+        }
+    }
 
     function showToast(message, atTop) {
         if (!message) return;
@@ -381,17 +422,12 @@ function initGame(gameId) {
     function startCountdowns() {
         if (countdownInterval) clearInterval(countdownInterval);
         countdownInterval = setInterval(function() {
-            // Handle player disconnect countdowns
             var countdowns = document.querySelectorAll('.player-countdown');
             countdowns.forEach(function(el) {
                 var seconds = parseInt(el.dataset.seconds) - 1;
                 el.dataset.seconds = seconds;
                 var timerSpan = el.querySelector('.countdown-timer');
                 if (timerSpan) timerSpan.textContent = seconds + 's';
-                if (seconds <= 0) {
-                    // Grace period expired, notify server
-                    fetch('/game/' + gameId + '/check-disconnects', { method: 'POST' });
-                }
             });
             
             // Handle round result countdown (visual only - server auto-advances)
@@ -448,6 +484,111 @@ function initGame(gameId) {
             });
         }
     }
+
+    function handleGameUpdate(data) {
+        gameContent.innerHTML = data;
+        htmx.process(gameContent);
+        startCountdowns();
+        setupMarblePicker();
+        bindShareButton();
+        bindSoundButton();
+        bindQrButton();
+        var phase = phaseState();
+        if (lastPhaseClass && phase.phaseClass && lastPhaseClass !== phase.phaseClass && /phase-info/.test(phase.phaseClass)) {
+            playRoundStartSound();
+        }
+        if (!lastYourTurn && phase.yourTurn) {
+            playYourTurnSound();
+        }
+        lastPhaseClass = phase.phaseClass;
+        lastYourTurn = phase.yourTurn;
+        checkMarbleChanges();
+        var countdowns = document.querySelectorAll('.player-countdown');
+        console.log('Found ' + countdowns.length + ' countdown elements');
+    }
+
+    function scheduleReconnect() {
+        if (!reconnectTimeout) {
+            var delay = reconnectDelayMs;
+            var jitter = Math.floor(Math.random() * 250);
+            var waitMs = delay + jitter;
+            reconnectTimeout = setTimeout(function() {
+                reconnectTimeout = null;
+                connect();
+            }, waitMs);
+            reconnectDelayMs = Math.min(30000, reconnectDelayMs * 2);
+        }
+    }
+
+    function connectSse() {
+        console.log('SSE connecting...');
+        eventSource = new EventSource('/game/' + gameId + '/events');
+        lastPingTime = Date.now();
+
+        eventSource.addEventListener('open', function() {
+            console.log('SSE connection opened');
+            isConnecting = false;
+            reconnectDelayMs = 1000;
+        });
+
+        eventSource.addEventListener('game-update', function(e) {
+            console.log('SSE game-update received, updating DOM');
+            handleGameUpdate(e.data);
+        });
+
+        eventSource.addEventListener('ping', function() {
+            lastPingTime = Date.now();
+        });
+
+        eventSource.onerror = function() {
+            console.log('SSE connection error, readyState:', eventSource ? eventSource.readyState : -1);
+            isConnecting = false;
+            closeRealtimeConnection();
+            scheduleReconnect();
+        };
+    }
+
+    function connectWs() {
+        console.log('WS connecting...');
+        webSocket = new WebSocket(wsUrl('/ws/game/' + gameId));
+        lastPingTime = Date.now();
+
+        webSocket.onopen = function() {
+            console.log('WS connection opened');
+            isConnecting = false;
+            wsFailed = false;
+            wsRetryAt = 0;
+            reconnectDelayMs = 1000;
+        };
+
+        webSocket.onmessage = function(e) {
+            var text = typeof e.data === 'string' ? e.data : '';
+            if (!text) return;
+            if (text === '__PING__') {
+                lastPingTime = Date.now();
+                return;
+            }
+            if (text.indexOf('__GAME_UPDATE__:') === 0) {
+                lastPingTime = Date.now();
+                handleGameUpdate(text.slice('__GAME_UPDATE__:'.length));
+            }
+        };
+
+        webSocket.onerror = function() {
+            // Keep reconnect logic in onclose.
+        };
+
+        webSocket.onclose = function() {
+            console.log('WS connection closed');
+            isConnecting = false;
+            closeRealtimeConnection();
+            if (transportMode === 'auto') {
+                wsFailed = true;
+                wsRetryAt = Date.now() + 120000;
+            }
+            scheduleReconnect();
+        };
+    }
     
     function connect() {
         // Prevent multiple simultaneous connection attempts
@@ -462,68 +603,14 @@ function initGame(gameId) {
             clearTimeout(reconnectTimeout);
             reconnectTimeout = null;
         }
-        
-        // Close existing connection if any
-        if (eventSource) {
-            eventSource.close();
-            eventSource = null;
+
+        closeRealtimeConnection();
+
+        if (shouldTryWs()) {
+            connectWs();
+        } else {
+            connectSse();
         }
-        
-        console.log('SSE connecting...');
-        eventSource = new EventSource('/game/' + gameId + '/events');
-        lastPingTime = Date.now();
-        
-        eventSource.addEventListener('open', function(e) {
-            console.log('SSE connection opened');
-            isConnecting = false;
-        });
-        
-        eventSource.addEventListener('game-update', function(e) {
-            console.log('SSE game-update received, updating DOM');
-            gameContent.innerHTML = e.data;
-            htmx.process(gameContent);
-            startCountdowns();
-            setupMarblePicker();
-            bindShareButton();
-            bindSoundButton();
-            bindQrButton();
-            var phase = phaseState();
-            if (lastPhaseClass && phase.phaseClass && lastPhaseClass !== phase.phaseClass && /phase-info/.test(phase.phaseClass)) {
-                playRoundStartSound();
-            }
-            if (!lastYourTurn && phase.yourTurn) {
-                playYourTurnSound();
-            }
-            lastPhaseClass = phase.phaseClass;
-            lastYourTurn = phase.yourTurn;
-            checkMarbleChanges();
-            var countdowns = document.querySelectorAll('.player-countdown');
-            console.log('Found ' + countdowns.length + ' countdown elements');
-        });
-        
-        eventSource.addEventListener('ping', function(e) {
-            lastPingTime = Date.now();
-        });
-        
-        eventSource.onerror = function(e) {
-            console.log('SSE connection error, readyState:', eventSource.readyState);
-            isConnecting = false;
-            
-            // Close the broken connection
-            if (eventSource) {
-                eventSource.close();
-                eventSource = null;
-            }
-            
-            // Reconnect after a short delay (not a full page reload)
-            if (!reconnectTimeout) {
-                reconnectTimeout = setTimeout(function() {
-                    reconnectTimeout = null;
-                    console.log('Attempting SSE reconnect...');
-                    connect();
-                }, 1000);
-            }
-        };
     }
     
     // Check if we've received a ping recently (within 45 seconds)
@@ -564,6 +651,6 @@ function initGame(gameId) {
         if (pingCheckInterval) clearInterval(pingCheckInterval);
         if (countdownInterval) clearInterval(countdownInterval);
         if (reconnectTimeout) clearTimeout(reconnectTimeout);
-        if (eventSource) eventSource.close();
+        closeRealtimeConnection();
     });
 }

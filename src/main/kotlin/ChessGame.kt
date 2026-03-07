@@ -113,9 +113,11 @@ class ChessGame(
         resetBoard()
     }
 
+    @get:Synchronized
     val allPlayers: List<Player>
         get() = playerOrder.mapNotNull { players[it] }
 
+    @get:Synchronized
     val connectedPlayers: List<Player>
         get() = allPlayers.filter { it.connected }
 
