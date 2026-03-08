@@ -184,6 +184,24 @@ class ChessGameTest {
     }
 
     @Test
+    fun `move history records moves and resets on new game`() {
+        val game = startedGame()
+
+        assertTrue(game.makeMove("p1", "e2", "e4"))
+        assertTrue(game.makeMove("p2", "e7", "e5"))
+
+        val history = game.moveHistorySnapshot()
+        assertEquals(2, history.size)
+        assertTrue(history[0].startsWith("move:"))
+        assertTrue(history[1].startsWith("move:"))
+
+        game.forceGameOverForTesting(winnerSessionId = "p1", reason = "checkmate")
+        game.resetForNewGame()
+
+        assertTrue(game.moveHistorySnapshot().isEmpty())
+    }
+
+    @Test
     fun `spectator cannot surrender`() {
         val game = startedGame()
         game.addPlayer("p3", "Spec").connected = true

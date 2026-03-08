@@ -552,6 +552,64 @@ test.describe('Chess Joining', () => {
     }
   });
 
+  test('move replay can step backward and returns to live on incoming opponent move', async ({ browser }) => {
+    const p1Context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+    const p1 = await p1Context.newPage();
+    const p2Context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+    const p2 = await p2Context.newPage();
+
+    try {
+      const gameId = await createChessGame(p1, 'Host');
+      await joinChessGame(p2, gameId, 'Opponent');
+
+      const { whitePage, blackPage } = await resolveWhiteBlackPages(p1, p2, gameId);
+
+      await expect.poll(async () => await postMove(whitePage, gameId, 'e2', 'e4'), { timeout: 15000 }).toBe(200);
+      await expect.poll(async () => await postMove(blackPage, gameId, 'e7', 'e5'), { timeout: 15000 }).toBe(200);
+
+      await expect.poll(async () => await postMove(whitePage, gameId, 'g1', 'f3'), { timeout: 15000 }).toBe(200);
+
+      const viewer = whitePage;
+      const e5 = viewer.locator('.chess-square[data-square="e5"]');
+      const f3 = viewer.locator('.chess-square[data-square="f3"]');
+      await expect(e5).toHaveAttribute('data-piece', /p/i);
+      await expect(f3).toHaveAttribute('data-piece', /n/i);
+
+      await viewer.evaluate(() => {
+        const dbg = (window as any).__chessDebug;
+        if (dbg && typeof dbg.forceStepReplay === 'function') {
+          dbg.forceStepReplay(-1);
+        }
+      });
+
+      await expect(f3).toHaveAttribute('data-piece', '');
+
+      await expect.poll(async () => await postMove(blackPage, gameId, 'b8', 'c6'), { timeout: 15000 }).toBe(200);
+
+      await expect.poll(async () => {
+        return await viewer.locator('.chess-square[data-square="c6"]').getAttribute('data-piece');
+      }, { timeout: 10000 }).toMatch(/n/i);
+
+      await expect(viewer.locator('#chess-content')).not.toHaveAttribute('data-replay-active', '1');
+
+      await viewer.reload();
+      await expect(viewer.locator('.chess-square[data-square="c6"]')).toHaveAttribute('data-piece', /n/i);
+
+      await viewer.evaluate(() => {
+        const dbg = (window as any).__chessDebug;
+        if (dbg && typeof dbg.forceStepReplay === 'function') {
+          dbg.forceStepReplay(-1);
+        }
+      });
+      await expect.poll(async () => {
+        return await viewer.locator('.chess-square[data-square="c6"]').getAttribute('data-piece');
+      }, { timeout: 5000 }).toBe('');
+    } finally {
+      await p1Context.close();
+      await p2Context.close();
+    }
+  });
+
   test('resume reconnect helpers are present for client-side recovery hooks', async ({ browser }) => {
     const p1Context = await browser.newContext();
     const p1 = await p1Context.newPage();

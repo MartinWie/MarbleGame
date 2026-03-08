@@ -347,6 +347,39 @@ private fun FlowContent.renderBoardWithMeta(
 
     div("chess-board-meta chess-board-meta-own") {
         span("board-side-name") { +sideLabel(bottomColor, bottomSessionId ?: sessionId, isBottom = true) }
+        button(classes = "btn btn-secondary header-action-btn header-action-btn--icon replay-btn") {
+            id = "replay-back-btn"
+            attributes["type"] = "button"
+            attributes["aria-label"] = "button.replay.back".t(lang)
+            attributes["title"] = "button.replay.back".t(lang)
+            span("replay-icon") {
+                unsafe {
+                    +
+                        """
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-left-circle" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                          <path fill-rule="evenodd" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8m15 0A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-4.5-.5a.5.5 0 0 1 0 1H5.707l2.147 2.146a.5.5 0 0 1-.708.708l-3-3a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L5.707 7.5z"/>
+                        </svg>
+                        """.trimIndent()
+                }
+            }
+        }
+
+        button(classes = "btn btn-secondary header-action-btn header-action-btn--icon replay-btn") {
+            id = "replay-forward-btn"
+            attributes["type"] = "button"
+            attributes["aria-label"] = "button.replay.forward".t(lang)
+            attributes["title"] = "button.replay.forward".t(lang)
+            span("replay-icon") {
+                unsafe {
+                    +
+                        """
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-right-circle" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                          <path fill-rule="evenodd" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8m15 0A8 8 0 1 1 0 8a8 8 0 0 1 16 0M4.5 7.5a.5.5 0 0 0 0 1h5.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3a.5.5 0 0 0 0-.708l-3-3a.5.5 0 1 0-.708.708L10.293 7.5z"/>
+                        </svg>
+                        """.trimIndent()
+                }
+            }
+        }
         if (yourColor != null && game.phase == ChessPhase.IN_PROGRESS) {
             button(classes = "btn btn-secondary header-action-btn header-action-btn--icon chess-surrender-btn") {
                 id = "surrender-btn"
@@ -458,6 +491,7 @@ private fun FlowContent.renderBoard(
             attributes["data-white-seconds"] = game.whiteClockSecondsRemaining().toString()
             attributes["data-black-seconds"] = game.blackClockSecondsRemaining().toString()
             attributes["data-clock-started"] = if (game.clockStarted()) "1" else "0"
+            attributes["data-move-history"] = encodeMoveHistory(game.moveHistorySnapshot())
             for (rank in rankOrder) {
                 for (file in fileOrder) {
                     val square = "$file$rank"
@@ -513,4 +547,28 @@ private fun formatClock(seconds: Int): String {
     val min = clamped / 60
     val sec = clamped % 60
     return String.format("%d:%02d", min, sec)
+}
+
+private fun encodeMoveHistory(history: List<String>): String {
+    if (history.isEmpty()) return ""
+    val out = StringBuilder(history.size * 12)
+    history.forEachIndexed { index, move ->
+        if (index > 0) out.append('|')
+        val token = move.trim()
+        token.forEach { ch ->
+            when (ch) {
+                '%', '|', ':' -> {
+                    out.append('%')
+                    out.append(
+                        ch.code
+                            .toString(16)
+                            .uppercase()
+                            .padStart(2, '0'),
+                    )
+                }
+                else -> out.append(ch)
+            }
+        }
+    }
+    return out.toString()
 }

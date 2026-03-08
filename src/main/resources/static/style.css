@@ -180,7 +180,8 @@ a:hover {
 
 .share-icon,
 .sound-icon,
-.surrender-icon {
+.surrender-icon,
+.replay-icon {
     display: inline-flex;
     width: 16px;
     height: 16px;
@@ -194,10 +195,45 @@ a:hover {
 
 .share-icon svg,
 .sound-icon svg,
-.surrender-icon svg {
+.surrender-icon svg,
+.replay-icon svg {
     width: 16px;
     height: 16px;
     fill: currentColor;
+}
+
+.replay-btn.disabled,
+.replay-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+#replay-back-btn,
+#replay-forward-btn {
+    min-width: 40px;
+    width: 40px;
+    min-height: 40px;
+    height: 40px;
+    padding: 8px;
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#replay-back-btn:hover,
+#replay-forward-btn:hover,
+#replay-back-btn.active,
+#replay-forward-btn.active {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: #ffffff;
+}
+
+#chess-content[data-replay-active="1"] .chess-board {
+    outline: 2px solid rgba(255, 198, 105, 0.45);
+    outline-offset: 3px;
 }
 
 .qr-image {
@@ -216,6 +252,7 @@ a:hover {
     gap: 8px;
     flex-wrap: nowrap;
     align-items: center;
+    overflow: visible;
 }
 
 .qr-modal {

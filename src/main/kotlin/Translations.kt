@@ -109,6 +109,8 @@ object Translations {
                     "phase.gameOver.waitingForHost" to "Waiting for %s to start a new game...",
                     "button.playAgain" to "Play Again",
                     "button.cancel" to "Cancel",
+                    "button.replay.back" to "Replay Back",
+                    "button.replay.forward" to "Replay Forward",
                     // Chess
                     "chess.title" to "Chess Game",
                     "chess.waiting.title" to "Waiting for Players",
@@ -307,6 +309,8 @@ object Translations {
                     "phase.gameOver.waitingForHost" to "Warte auf %s für ein neues Spiel...",
                     "button.playAgain" to "Nochmal spielen",
                     "button.cancel" to "Abbrechen",
+                    "button.replay.back" to "Replay zuruck",
+                    "button.replay.forward" to "Replay vor",
                     // Chess
                     "chess.title" to "Schach",
                     "chess.waiting.title" to "Warte auf Spieler",

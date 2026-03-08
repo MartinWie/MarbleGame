@@ -223,12 +223,24 @@ e2e/                  # Playwright E2E tests
 
 ### TODO
 
-- option to replay the moves (Züge zurück gehen!)(not really go back, but to have the option to see how the board looked like x steps back)(left right arrow key or)
-- Setup posthog feedback or a own small feedback table with option on the page 
-- Start with redis setup(full game state into redis) avoid loosing game state on server restart and better horizontal scalling
-- Can we reduce the update sizes we send to the clients? or any low hanging fruits to support more games/players?
-- Analytics against chess engine?
 - Split chess and marbles?
+- Setup domains(both)
+- Start with redis setup(full game state into redis) avoid loosing game state on server restart and better horizontal scalling
+- Setup posthog feedback or a own small feedback table with option on the page 
+- Can we reduce the update sizes we send to the clients? or any low hanging fruits to support more games/players?
+- Implement users
+- Implement pro user flag
+- Implement pro user features
+    - Analytics against chess engine?
+    - Fixed name with pro label next to name
+    - Make streamer mode pro user feature
+    - Store and re-watch played games
+    - Rewatched games, see were you made mistakesvs chessengine
+- Alerts for 
+    - Outages
+    - Slow response times
+- Implement payment option
+    - ....
 
 ### TODO - Road to 100x Capacity
 

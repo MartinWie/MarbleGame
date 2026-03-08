@@ -81,6 +81,8 @@ class ChessGame(
     var lastMoveMeta: String? = null
         private set
 
+    private val moveHistory = CopyOnWriteArrayList<String>()
+
     @Volatile
     var whiteSessionId: String? = null
         private set
@@ -134,6 +136,8 @@ class ChessGame(
     fun pieceAt(square: String): Char? = board[square.lowercase()]
 
     fun boardSnapshot(): Map<String, Char> = board.toMap()
+
+    fun moveHistorySnapshot(): List<String> = moveHistory.toList()
 
     fun enPassantTarget(): String? = enPassantTargetSquare
 
@@ -300,6 +304,7 @@ class ChessGame(
             clearEnPassant()
             lastMove = "$normalizedFrom-$normalizedTo"
             lastMoveMeta = "castle:$normalizedFrom-$normalizedTo"
+            moveHistory.add(lastMoveMeta ?: "")
             if (isKingInCheck(movingColor)) {
                 restoreState(snapshot)
                 return false
@@ -337,6 +342,7 @@ class ChessGame(
                 capturedPiece != null -> "capture:$normalizedFrom-$normalizedTo"
                 else -> "move:$normalizedFrom-$normalizedTo"
             }
+        moveHistory.add(lastMoveMeta ?: "")
 
         updatePieceMoveState(piece, normalizedFrom, normalizedTo, capturedPiece)
         updateEnPassantState(piece, normalizedFrom, normalizedTo)
@@ -397,6 +403,7 @@ class ChessGame(
         endReason = null
         lastMove = null
         lastMoveMeta = null
+        moveHistory.clear()
         resetPlayerClocks()
         turnStartedAt = null
         clockStarted = false
@@ -608,6 +615,7 @@ class ChessGame(
         this.endReason = null
         this.lastMove = null
         this.lastMoveMeta = null
+        moveHistory.clear()
         clearEnPassant()
         kingMoved[ChessColor.WHITE] = true
         kingMoved[ChessColor.BLACK] = true
@@ -740,6 +748,7 @@ class ChessGame(
         endReason = null
         lastMove = null
         lastMoveMeta = null
+        moveHistory.clear()
         resetPlayerClocks()
         gameStartedAt = System.currentTimeMillis()
         startTurnClock()
@@ -897,6 +906,7 @@ class ChessGame(
         val rookMoved: Map<String, Boolean>,
         val lastMove: String?,
         val lastMoveMeta: String?,
+        val moveHistory: List<String>,
         val turn: ChessColor,
         val winnerSessionId: String?,
         val endReason: String?,
@@ -917,6 +927,7 @@ class ChessGame(
             rookMoved = rookMoved.toMap(),
             lastMove = lastMove,
             lastMoveMeta = lastMoveMeta,
+            moveHistory = moveHistory.toList(),
             turn = turn,
             winnerSessionId = winnerSessionId,
             endReason = endReason,
@@ -939,6 +950,8 @@ class ChessGame(
         rookMoved.putAll(snapshot.rookMoved)
         lastMove = snapshot.lastMove
         lastMoveMeta = snapshot.lastMoveMeta
+        moveHistory.clear()
+        moveHistory.addAll(snapshot.moveHistory)
         turn = snapshot.turn
         winnerSessionId = snapshot.winnerSessionId
         endReason = snapshot.endReason
