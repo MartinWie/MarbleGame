@@ -57,7 +57,7 @@ internal fun Route.registerSharedRoutes() {
                 return@get
             }
 
-        if (!target.startsWith("/game/") && !target.startsWith("/chess/")) {
+        if (!target.startsWith("/game/")) {
             call.respondText("Invalid target", status = HttpStatusCode.BadRequest)
             return@get
         }

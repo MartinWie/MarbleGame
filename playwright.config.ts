@@ -22,12 +22,6 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: ['**/chess-mobile.spec.ts'],
-    },
-    {
-      name: 'mobile-chrome',
-      use: { ...devices['Pixel 7'] },
-      testMatch: ['**/chess-mobile.spec.ts'],
     },
   ],
 

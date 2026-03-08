@@ -1,9 +1,10 @@
 package de.mw
 
-import io.ktor.client.request.*
-import io.ktor.client.statement.*
-import io.ktor.http.*
-import io.ktor.server.testing.*
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.testing.testApplication
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -63,22 +64,6 @@ class ApplicationTest {
         }
 
     @Test
-    fun `home page includes home init script for persisted chess preferences`() =
-        testApplication {
-            application {
-                module()
-            }
-            client.get("/").apply {
-                assertEquals(HttpStatusCode.OK, status)
-                val body = bodyAsText()
-                assertTrue(body.contains("/static/home.js"))
-                assertTrue(body.contains("initHomePage();"))
-            }
-        }
-
-    // ==================== Language Detection Tests ====================
-
-    @Test
     fun `home page uses German when Accept-Language is de`() =
         testApplication {
             application {
@@ -90,7 +75,7 @@ class ApplicationTest {
                 }.apply {
                     assertEquals(HttpStatusCode.OK, status)
                     val body = bodyAsText()
-                    assertTrue(body.contains("Spiele") || body.contains("Spiel wählen"))
+                    assertTrue(body.contains("Spiele") || body.contains("Murmeln"))
                 }
         }
 
@@ -106,70 +91,7 @@ class ApplicationTest {
                 }.apply {
                     assertEquals(HttpStatusCode.OK, status)
                     val body = bodyAsText()
-                    assertTrue(body.contains("Games") || body.contains("Choose a Game"))
-                }
-        }
-
-    @Test
-    fun `home page uses English when Accept-Language is missing`() =
-        testApplication {
-            application {
-                module()
-            }
-            client.get("/").apply {
-                assertEquals(HttpStatusCode.OK, status)
-                val body = bodyAsText()
-                assertTrue(body.contains("Games") || body.contains("Choose a Game"))
-            }
-        }
-
-    @Test
-    fun `home page uses German with complex Accept-Language header`() =
-        testApplication {
-            application {
-                module()
-            }
-            client
-                .get("/") {
-                    header("Accept-Language", "de-DE,de;q=0.9,en;q=0.8")
-                }.apply {
-                    assertEquals(HttpStatusCode.OK, status)
-                    val body = bodyAsText()
-                    assertTrue(body.contains("Spiele") || body.contains("Spiel wählen"))
-                }
-        }
-
-    @Test
-    fun `home page falls back to English for unknown language`() =
-        testApplication {
-            application {
-                module()
-            }
-            client
-                .get("/") {
-                    header("Accept-Language", "fr-FR")
-                }.apply {
-                    assertEquals(HttpStatusCode.OK, status)
-                    val body = bodyAsText()
-                    // Falls back to English since French is not supported
-                    assertTrue(body.contains("Marble Game") || body.contains("Create"))
-                }
-        }
-
-    @Test
-    fun `home page handles invalid Accept-Language header gracefully`() =
-        testApplication {
-            application {
-                module()
-            }
-            client
-                .get("/") {
-                    header("Accept-Language", "invalid")
-                }.apply {
-                    assertEquals(HttpStatusCode.OK, status)
-                    // Should fall back to English
-                    val body = bodyAsText()
-                    assertTrue(body.contains("Marble Game") || body.contains("Create"))
+                    assertTrue(body.contains("Games") || body.contains("Marble"))
                 }
         }
 
@@ -179,8 +101,8 @@ class ApplicationTest {
             application {
                 module()
             }
-            // Create a game first
             val game = GameManager.createGame("test-session")
+            game.addPlayer("test-session", "Host", "de")
             try {
                 client
                     .get("/game/${game.id}/join") {

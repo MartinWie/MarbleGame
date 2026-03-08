@@ -4,12 +4,12 @@ window.uiShared = (function() {
 
     function showToast(message, atTop, durationMs) {
         if (!message) return;
-        var existing = document.getElementById('chess-toast');
+        var existing = document.getElementById('game-toast');
         if (existing) existing.remove();
 
         var toast = document.createElement('div');
-        toast.id = 'chess-toast';
-        toast.className = 'chess-toast';
+        toast.id = 'game-toast';
+        toast.className = 'game-toast';
         if (atTop) toast.classList.add('toast-top');
         toast.textContent = message;
         document.body.appendChild(toast);

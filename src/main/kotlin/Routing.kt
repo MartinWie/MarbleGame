@@ -24,7 +24,6 @@ fun Application.configureRouting() {
     routing {
         registerPageRoutes()
         registerMarblesRoutes(::isAllowedWebSocketOrigin)
-        registerChessRoutes(::isAllowedWebSocketOrigin)
         registerSharedRoutes()
     }
 }

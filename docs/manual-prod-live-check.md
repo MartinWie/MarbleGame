@@ -1,6 +1,6 @@
-# Manual Production Live Check (Marbles + Chess)
+# Manual Production Live Check (Marbles)
 
-This runbook verifies that the currently deployed production setup is live and realtime-sync works for both game modes.
+This runbook verifies that the currently deployed production setup is live and marbles realtime sync works as expected.
 
 Target: `https://games.7mw.de`
 
@@ -14,19 +14,14 @@ Target: `https://games.7mw.de`
 ## Quick Smoke (2-3 min)
 
 1. Open `https://games.7mw.de` in both sessions.
-2. Session A creates a **Marbles** game.
+2. Session A creates a game.
 3. Session B joins via the shared join link.
 4. Session A places marbles and submits a guess.
 5. Verify Session B updates automatically without manual refresh.
-6. Repeat 2-5 for **Chess**:
-   - create chess game,
-   - join from Session B,
-   - make one legal move,
-   - verify board updates on both sessions.
 
 Pass criteria:
 
-- Both sessions stay in sync in real time for marbles and chess.
+- Both sessions stay in sync in real time.
 - No manual refresh required.
 
 ## Detailed Verification
@@ -45,24 +40,7 @@ Expected:
 
 - Updates appear on both clients within ~1s.
 
-### 2) Chess Realtime Sync
-
-1. Session A: create chess game (`HostA`).
-2. Session B: join (`GuestB`).
-3. Determine white side (who has legal move from `e2`).
-4. White plays `e2 -> e4`.
-5. Verify on both:
-   - piece moved to `e4`,
-   - `e2` is empty,
-   - turn switched.
-
-Expected:
-
-- Board state and turn are identical on both sessions.
-
-### 3) Reconnect Behavior
-
-Run this for marbles and chess separately:
+### 2) Reconnect Behavior
 
 1. Keep Session A on game page.
 2. Session B refreshes the page 3-5 times quickly.
@@ -74,12 +52,11 @@ Expected:
 - No permanent desync.
 - Reconnect countdown/status may briefly appear, then clears.
 
-### 4) WebSocket Health Check (optional, recommended)
+### 3) WebSocket Health Check (optional, recommended)
 
 In browser DevTools for a game page:
 
-- Marbles WS URL should be: `wss://games.7mw.de/ws/game/<gameId>`
-- Chess WS URL should be: `wss://games.7mw.de/ws/chess/<gameId>`
+- WS URL should be: `wss://games.7mw.de/ws/game/<gameId>`
 
 Expected:
 
@@ -90,7 +67,6 @@ Expected:
 
 If check fails, capture:
 
-- Game mode (`marbles` or `chess`)
 - Game ID
 - Time (UTC)
 - Browser + OS
@@ -98,13 +74,12 @@ If check fails, capture:
 - WebSocket close code/reason from DevTools
 - Screenshot of both sessions showing divergence
 
-## Suggested "Go/No-Go" Checklist
+## Suggested Go/No-Go Checklist
 
-- [ ] Marbles two-client sync works
-- [ ] Chess two-client sync works
+- [ ] Two-client sync works
 - [ ] Reconnect after rapid refresh recovers
 - [ ] WS connections stay open (no repeated invalid-origin closes)
-- [ ] No persistent client divergence after 3 rounds/moves
+- [ ] No persistent client divergence after multiple rounds
 
 If all are checked, production realtime is considered healthy for manual live verification.
 
@@ -128,8 +103,8 @@ node scripts/prod-health-check.mjs --base https://your-env.example.com --timeout
 
 Behavior:
 
-- creates and joins one marbles game + one chess game
+- creates and joins one marbles game
 - verifies WS path opens and receives traffic
-- executes one gameplay action in each mode
+- executes one gameplay action
 - verifies both clients converge to same state
 - exits with non-zero status on failure (pipeline-friendly)

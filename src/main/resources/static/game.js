@@ -55,12 +55,12 @@ function initGame(gameId) {
             return;
         }
         if (!message) return;
-        var existing = document.getElementById('chess-toast');
+        var existing = document.getElementById('game-toast');
         if (existing) existing.remove();
 
         var toast = document.createElement('div');
-        toast.id = 'chess-toast';
-        toast.className = 'chess-toast';
+        toast.id = 'game-toast';
+        toast.className = 'game-toast';
         if (atTop) toast.classList.add('toast-top');
         toast.textContent = message;
         document.body.appendChild(toast);
@@ -263,20 +263,6 @@ function initGame(gameId) {
 
             clipboardCopy(shareUrl, btn);
         });
-    }
-
-    function bindTimedModeToggle() {
-        var timedCheckbox = document.getElementById('timed-mode');
-        var timedConfig = document.getElementById('timed-config-wrap') || document.querySelector('.timed-config');
-        if (!timedCheckbox || !timedConfig || timedCheckbox.dataset.timedBound === '1') return;
-        timedCheckbox.dataset.timedBound = '1';
-
-        function syncTimedConfig() {
-            timedConfig.classList.toggle('hidden', !timedCheckbox.checked);
-        }
-
-        syncTimedConfig();
-        timedCheckbox.addEventListener('change', syncTimedConfig);
     }
 
     function bindQrButton() {
@@ -635,8 +621,6 @@ function initGame(gameId) {
     bindShareButton();
     bindSoundButton();
     bindQrButton();
-    bindTimedModeToggle();
-    setTimeout(bindTimedModeToggle, 50);
     var initialPhase = phaseState();
     lastPhaseClass = initialPhase.phaseClass;
     lastYourTurn = initialPhase.yourTurn;

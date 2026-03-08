@@ -45,40 +45,28 @@ function quoted(value) {
   return value.includes(' ') ? `"${value}"` : value;
 }
 
-async function clickMode(page, mode) {
-  await page.locator(`.mode-tile[data-mode="${mode}"]`).click();
-}
-
-async function createGame(page, baseUrl, gameType, playerName) {
+async function createGame(page, baseUrl, playerName) {
   await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' });
-  await clickMode(page, gameType === 'chess' ? 'chess' : 'marbles');
 
-  const formId = gameType === 'chess' ? '#create-form-chess' : '#create-form-marbles';
-  const buttonText = gameType === 'chess' ? 'Create Chess' : 'Create Marbles';
+  await page.locator('#create-form-marbles input[name="playerName"]').fill(playerName);
+  await page.getByRole('button', { name: 'Create Marbles' }).click();
 
-  await page.locator(`${formId} input[name="playerName"]`).fill(playerName);
-  await page.locator(`${formId} button:has-text("${buttonText}")`).click();
-
-  const pathRegex = gameType === 'chess' ? /\/chess\/[a-f0-9]{8}$/ : /\/game\/[a-f0-9]{8}$/;
-  await page.waitForURL(pathRegex);
+  await page.waitForURL(/\/game\/[a-f0-9]{8}$/);
 
   const gameId = page.url().split('/').pop();
-  if (!gameId) throw new Error(`Unable to parse ${gameType} game ID from URL`);
+  if (!gameId) throw new Error('Unable to parse game ID from URL');
   return gameId;
 }
 
-async function joinGame(page, baseUrl, gameType, gameId, playerName) {
-  const joinPath = gameType === 'chess' ? `/chess/${gameId}/join` : `/game/${gameId}/join`;
-  await page.goto(`${baseUrl}${joinPath}`, { waitUntil: 'domcontentloaded' });
-  if (await page.locator('.chess-board, .game-area').count()) {
-    const pathRegex = gameType === 'chess' ? new RegExp(`/chess/${gameId}$`) : new RegExp(`/game/${gameId}$`);
-    await page.waitForURL(pathRegex);
+async function joinGame(page, baseUrl, gameId, playerName) {
+  await page.goto(`${baseUrl}/game/${gameId}/join`, { waitUntil: 'domcontentloaded' });
+  if (await page.locator('.game-area').count()) {
+    await page.waitForURL(new RegExp(`/game/${gameId}$`));
     return;
   }
   await page.locator('input[name="playerName"]').fill(playerName);
-  await page.locator('button:has-text("Join Game")').click();
-  const pathRegex = gameType === 'chess' ? new RegExp(`/chess/${gameId}$`) : new RegExp(`/game/${gameId}$`);
-  await page.waitForURL(pathRegex);
+  await page.getByRole('button', { name: 'Join Game' }).click();
+  await page.waitForURL(new RegExp(`/game/${gameId}$`));
 }
 
 async function postMarblesAction(page, gameId, path, payload = {}) {
@@ -94,41 +82,6 @@ async function postMarblesAction(page, gameId, path, payload = {}) {
     },
     { gameId, path, payload },
   );
-}
-
-async function postChessMove(page, gameId, from, to) {
-  return await page.evaluate(
-    async ({ gameId, from, to }) => {
-      const body = new URLSearchParams({ from, to });
-      const response = await fetch(`/chess/${gameId}/move`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-        body: body.toString(),
-      });
-      return response.status;
-    },
-    { gameId, from, to },
-  );
-}
-
-async function legalMoves(page, gameId, from) {
-  return await page.evaluate(
-    async ({ gameId, from }) => {
-      const res = await fetch(`/chess/${gameId}/legal-moves?from=${encodeURIComponent(from)}`);
-      if (!res.ok) return [];
-      const text = await res.text();
-      return text ? text.split(',').filter(Boolean) : [];
-    },
-    { gameId, from },
-  );
-}
-
-async function resolveWhiteBlackPages(host, guest, gameId) {
-  const hostMoves = await legalMoves(host, gameId, 'e2');
-  if (hostMoves.length > 0) return { white: host, black: guest };
-  const guestMoves = await legalMoves(guest, gameId, 'e2');
-  if (guestMoves.length > 0) return { white: guest, black: host };
-  throw new Error('Could not determine white player for chess check');
 }
 
 async function waitForCondition(page, timeoutMs, predicate) {
@@ -161,7 +114,7 @@ function createWsTracker(page) {
       conn.frames += 1;
       const payload = typeof frame.payload === 'string' ? frame.payload : '';
       if (payload === '__PING__') conn.pingFrames += 1;
-      if (payload.startsWith('__GAME_UPDATE__:') || payload.startsWith('__CHESS_UPDATE__:')) {
+      if (payload.startsWith('__GAME_UPDATE__:')) {
         conn.updateFrames += 1;
       }
     });
@@ -237,18 +190,6 @@ async function marblesSnapshot(page, expectedNames) {
   }, expectedNames);
 }
 
-async function chessSnapshot(page) {
-  return await page.evaluate(() => {
-    const board = document.querySelector('.chess-board');
-    if (!board) return null;
-    const e2 = document.querySelector('.chess-square[data-square="e2"]')?.getAttribute('data-piece') || '';
-    const e4 = document.querySelector('.chess-square[data-square="e4"]')?.getAttribute('data-piece') || '';
-    const meta = board.getAttribute('data-last-move-meta') || '';
-    const turn = board.getAttribute('data-turn') || '';
-    return { e2, e4, meta, turn };
-  });
-}
-
 async function runMarblesCheck(baseUrl, timeoutMs, contextA, contextB) {
   const host = await contextA.newPage();
   const guest = await contextB.newPage();
@@ -256,13 +197,13 @@ async function runMarblesCheck(baseUrl, timeoutMs, contextA, contextB) {
   const guestWsTracker = createWsTracker(guest);
   const result = { mode: 'marbles', ok: false, gameId: null, checks: [] };
   try {
-    const hostName = randomName('m-host');
-    const guestName = randomName('m-guest');
+    const hostName = randomName('host');
+    const guestName = randomName('guest');
     const expectedPlayers = [hostName, guestName];
 
-    const gameId = await createGame(host, baseUrl, 'marbles', hostName);
+    const gameId = await createGame(host, baseUrl, hostName);
     result.gameId = gameId;
-    await joinGame(guest, baseUrl, 'marbles', gameId, guestName);
+    await joinGame(guest, baseUrl, gameId, guestName);
 
     const [wsHost, wsGuest] = await Promise.all([
       waitForWsSeen(hostWsTracker, `/ws/game/${gameId}`, timeoutMs),
@@ -320,68 +261,6 @@ async function runMarblesCheck(baseUrl, timeoutMs, contextA, contextB) {
   }
 }
 
-async function runChessCheck(baseUrl, timeoutMs, contextA, contextB) {
-  const host = await contextA.newPage();
-  const guest = await contextB.newPage();
-  const hostWsTracker = createWsTracker(host);
-  const guestWsTracker = createWsTracker(guest);
-  const result = { mode: 'chess', ok: false, gameId: null, checks: [] };
-  try {
-    const gameId = await createGame(host, baseUrl, 'chess', randomName('c-host'));
-    result.gameId = gameId;
-    await joinGame(guest, baseUrl, 'chess', gameId, randomName('c-guest'));
-
-    const [wsHost, wsGuest] = await Promise.all([
-      waitForWsSeen(hostWsTracker, `/ws/chess/${gameId}`, timeoutMs),
-      waitForWsSeen(guestWsTracker, `/ws/chess/${gameId}`, timeoutMs),
-    ]);
-    result.checks.push({ step: 'ws-host', ...wsHost });
-    result.checks.push({ step: 'ws-guest', ...wsGuest });
-    if (!wsHost.ok || !wsGuest.ok) return result;
-
-    const { white } = await resolveWhiteBlackPages(host, guest, gameId);
-    const moveStatus = await postChessMove(white, gameId, 'e2', 'e4');
-    result.checks.push({ step: 'move', status: moveStatus });
-    if (moveStatus !== 200) return result;
-
-    const hostSynced = await waitForCondition(host, timeoutMs, () => {
-      const e2 = document.querySelector('.chess-square[data-square="e2"]')?.getAttribute('data-piece') || '';
-      const e4 = document.querySelector('.chess-square[data-square="e4"]')?.getAttribute('data-piece') || '';
-      return e2 === '' && e4 !== '';
-    });
-    const guestSynced = await waitForCondition(guest, timeoutMs, () => {
-      const e2 = document.querySelector('.chess-square[data-square="e2"]')?.getAttribute('data-piece') || '';
-      const e4 = document.querySelector('.chess-square[data-square="e4"]')?.getAttribute('data-piece') || '';
-      return e2 === '' && e4 !== '';
-    });
-
-    const snapHost = await chessSnapshot(host);
-    const snapGuest = await chessSnapshot(guest);
-    const wsHostAfter = summarizeTracker(hostWsTracker, `/ws/chess/${gameId}`);
-    const wsGuestAfter = summarizeTracker(guestWsTracker, `/ws/chess/${gameId}`);
-    result.checks.push({ step: 'snapshot-host', snap: snapHost });
-    result.checks.push({ step: 'snapshot-guest', snap: snapGuest });
-    result.checks.push({ step: 'ws-host-final', ...wsHostAfter });
-    result.checks.push({ step: 'ws-guest-final', ...wsGuestAfter });
-
-    result.ok =
-      hostSynced &&
-      guestSynced &&
-      !!snapHost &&
-      !!snapGuest &&
-      snapHost.e2 === '' &&
-      snapGuest.e2 === '' &&
-      snapHost.e4 !== '' &&
-      snapGuest.e4 !== '' &&
-      (wsHostAfter.updates > 0 || wsHostAfter.pings > 0) &&
-      (wsGuestAfter.updates > 0 || wsGuestAfter.pings > 0);
-    return result;
-  } finally {
-    await host.close();
-    await guest.close();
-  }
-}
-
 function printResult(result) {
   const icon = result.ok ? 'PASS' : 'FAIL';
   console.log(`[${icon}] mode=${result.mode} game=${result.gameId || '-'} `);
@@ -407,10 +286,8 @@ async function main() {
   const contextB = await browser.newContext();
 
   let marblesResult;
-  let chessResult;
   try {
     marblesResult = await runMarblesCheck(baseUrl, options.timeoutMs, contextA, contextB);
-    chessResult = await runChessCheck(baseUrl, options.timeoutMs, contextA, contextB);
   } finally {
     await contextA.close();
     await contextB.close();
@@ -418,9 +295,8 @@ async function main() {
   }
 
   printResult(marblesResult);
-  printResult(chessResult);
 
-  if (!marblesResult.ok || !chessResult.ok) {
+  if (!marblesResult.ok) {
     console.error('Realtime health check FAILED');
     process.exit(1);
   }

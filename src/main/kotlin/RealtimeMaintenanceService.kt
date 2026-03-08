@@ -32,7 +32,6 @@ internal object RealtimeMaintenanceService {
                     while (isActive) {
                         delay(TICK_INTERVAL_MS)
                         tickMarblesGames()
-                        tickChessGames()
                     }
                 }
 
@@ -89,47 +88,6 @@ internal object RealtimeMaintenanceService {
             }
         }.onFailure { ex ->
             logger.warn("Maintenance tick failed for marbles sweep: {}", ex.message)
-        }
-    }
-
-    private fun tickChessGames() {
-        runCatching {
-            ChessGameManager.allGames().forEach { game ->
-                runCatching {
-                    var stateChanged = false
-
-                    val expiredPlayers =
-                        game.allPlayers
-                            .filter { !it.connected && !it.isWithinGracePeriod() }
-                            .map { it.sessionId }
-
-                    expiredPlayers.forEach { sessionId ->
-                        if (game.handleGracePeriodExpired(sessionId)) {
-                            stateChanged = true
-                        }
-                    }
-
-                    if (game.applyTurnClockTick()) {
-                        stateChanged = true
-                    }
-                    if (game.checkTurnTimeout()) {
-                        stateChanged = true
-                    }
-
-                    if (game.shouldAutoRestartNow()) {
-                        game.resetForNewGame()
-                        stateChanged = true
-                    }
-
-                    if (stateChanged) {
-                        game.broadcastToAllConnected(::renderChessState)
-                    }
-                }.onFailure { ex ->
-                    logger.warn("Maintenance tick failed for chess game {}: {}", game.id, ex.message)
-                }
-            }
-        }.onFailure { ex ->
-            logger.warn("Maintenance tick failed for chess sweep: {}", ex.message)
         }
     }
 }

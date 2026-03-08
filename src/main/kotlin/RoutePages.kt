@@ -22,12 +22,6 @@ internal fun Route.registerPageRoutes() {
                 title = "home.title".t(lang),
                 lang = lang,
                 includeHtmx = true,
-                extraBodyContent = {
-                    script(src = "/static/home.js") {}
-                    script {
-                        unsafe { +"initHomePage();" }
-                    }
-                },
             ) {
                 h1 { +"home.title".t(lang) }
 
@@ -37,131 +31,25 @@ internal fun Route.registerPageRoutes() {
                     }
                 }
 
-                div("card mode-selector-card") {
-                    h2 { +"home.chooseMode".t(lang) }
-                    p("hint") { +"home.chooseModeHint".t(lang) }
+                div("card") {
+                    h2 { +"home.createGame".t(lang) }
+                    p("hint") { +"home.createGameHint".t(lang) }
 
-                    div("mode-grid") {
-                        button(type = ButtonType.button, classes = "mode-tile") {
-                            attributes["data-mode"] = "marbles"
-                            attributes["aria-pressed"] = "false"
-                            attributes["aria-controls"] = "create-form-marbles"
-                            attributes["onclick"] =
-                                """
-                                document.querySelectorAll('.mode-tile').forEach(function(x){x.classList.remove('active');});
-                                document.querySelectorAll('.mode-tile').forEach(function(x){x.setAttribute('aria-pressed','false');});
-                                this.classList.add('active');
-                                this.setAttribute('aria-pressed','true');
-                                document.getElementById('create-form-marbles').classList.add('active');
-                                document.getElementById('create-form-chess').classList.remove('active');
-                                document.getElementById('create-mode-placeholder').classList.remove('active');
-                                """.trimIndent().replace("\n", " ")
-                            span("mode-icon") { +"●●" }
-                            span("mode-title") { +"home.mode.marbles".t(lang) }
-                            span("mode-hint") { +"home.createGameHint".t(lang) }
-                        }
+                    form {
+                        id = "create-form-marbles"
+                        hxPost("/game/create")
+                        hxTarget("body")
 
-                        button(type = ButtonType.button, classes = "mode-tile") {
-                            attributes["data-mode"] = "chess"
-                            attributes["aria-pressed"] = "false"
-                            attributes["aria-controls"] = "create-form-chess"
-                            attributes["onclick"] =
-                                """
-                                document.querySelectorAll('.mode-tile').forEach(function(x){x.classList.remove('active');});
-                                document.querySelectorAll('.mode-tile').forEach(function(x){x.setAttribute('aria-pressed','false');});
-                                this.classList.add('active');
-                                this.setAttribute('aria-pressed','true');
-                                document.getElementById('create-form-marbles').classList.remove('active');
-                                document.getElementById('create-form-chess').classList.add('active');
-                                document.getElementById('create-mode-placeholder').classList.remove('active');
-                                """.trimIndent().replace("\n", " ")
-                            span("mode-icon") { +"♚" }
-                            span("mode-title") { +"home.mode.chess".t(lang) }
-                            span("mode-hint") { +"home.createChessHint".t(lang) }
-                        }
-                    }
-
-                    div("create-mode-forms") {
-                        p("hint create-mode-placeholder active") {
-                            id = "create-mode-placeholder"
-                            +"home.pickGameFirst".t(lang)
-                        }
-
-                        form {
-                            id = "create-form-marbles"
-                            classes = setOf("mode-form")
-                            hxPost("/game/create")
-                            hxTarget("body")
-
-                            div("form-group") {
-                                label { +"home.yourName".t(lang) }
-                                input(type = InputType.text, name = "playerName") {
-                                    required = true
-                                    placeholder = "home.namePlaceholder".t(lang)
-                                    value = savedName
-                                    maxLength = MAX_PLAYER_NAME_LENGTH.toString()
-                                }
+                        div("form-group") {
+                            label { +"home.yourName".t(lang) }
+                            input(type = InputType.text, name = "playerName") {
+                                required = true
+                                placeholder = "home.namePlaceholder".t(lang)
+                                value = savedName
+                                maxLength = MAX_PLAYER_NAME_LENGTH.toString()
                             }
-                            button(type = ButtonType.submit, classes = "btn btn-primary") { +"button.create".t(lang) }
                         }
-
-                        form {
-                            id = "create-form-chess"
-                            classes = setOf("mode-form")
-                            hxPost("/chess/create")
-                            hxTarget("body")
-
-                            div("form-group") {
-                                label { +"home.yourName".t(lang) }
-                                input(type = InputType.text, name = "playerName") {
-                                    required = true
-                                    placeholder = "home.namePlaceholder".t(lang)
-                                    value = savedName
-                                    maxLength = MAX_PLAYER_NAME_LENGTH.toString()
-                                }
-                            }
-                            div("option-row") {
-                                label("option-checkbox") {
-                                    input(type = InputType.checkBox, name = "timedMode") {
-                                        id = "timed-mode"
-                                        attributes["onchange"] =
-                                            "document.getElementById('timed-config-wrap').classList.toggle('hidden', !this.checked);"
-                                    }
-                                    span("option-slider") {}
-                                    span("option-copy") {
-                                        span("option-title") { +"home.chess.option.timed".t(lang) }
-                                        span("option-subtitle") { +"home.chess.option.timed.hint".t(lang) }
-                                    }
-                                }
-                            }
-                            div {
-                                id = "timed-config-wrap"
-                                classes = setOf("option-row", "timed-config", "hidden")
-                                label {
-                                    htmlFor = "clock-minutes"
-                                    +"home.chess.option.clockMinutes".t(lang)
-                                }
-                                input(type = InputType.number, name = "clockMinutes") {
-                                    id = "clock-minutes"
-                                    min = "1"
-                                    max = "60"
-                                    step = "1"
-                                    value = "5"
-                                    attributes["inputmode"] = "numeric"
-                                }
-                            }
-                            div("option-row") {
-                                label("option-checkbox") {
-                                    input(type = InputType.checkBox, name = "streamerMode") { id = "streamer-mode" }
-                                    span("option-slider") {}
-                                    span("option-copy") {
-                                        span("option-title") { +"home.chess.option.streamer".t(lang) }
-                                        span("option-subtitle") { +"home.chess.option.streamer.hint".t(lang) }
-                                    }
-                                }
-                            }
-                            button(type = ButtonType.submit, classes = "btn btn-primary") { +"button.createChess".t(lang) }
-                        }
+                        button(type = ButtonType.submit, classes = "btn btn-primary") { +"button.create".t(lang) }
                     }
                 }
             }

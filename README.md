@@ -1,277 +1,112 @@
 # Marble Game
 
-A real-time multiplayer marble game inspired by the Korean drama "Squid Game". Built with Kotlin/Ktor using WebSockets for instant updates.
-
-## Game Rules
-
-1. Each player starts with **10 marbles**
-2. Players take turns being the "placer"
-3. The placer hides 1 or more marbles in their hand
-4. Other players guess: **EVEN** or **ODD**
-5. **Correct guessers** split the placed marbles equally
-6. **Wrong guessers** lose marbles to the placer
-7. Players with **0 marbles** become spectators
-8. **Last player standing wins!**
+Marble Game is a realtime multiplayer marbles service built with Kotlin/Ktor and WebSockets.
 
 ## Features
 
-- Real-time multiplayer via WebSockets
-- Mobile-first responsive design
-- Shareable game links with unique codes
-- Auto-reconnect on connection loss
-- Player disconnect detection
-- Session-based player names
+- Realtime multiplayer marbles via WebSockets
+- Fast reconnect and connection grace period handling
+- Share links and QR join flow
+- Mobile-first UI with server-rendered HTMX updates
+- Automatic round progression and game cleanup
 
 ## Tech Stack
 
 - **Backend**: Kotlin + Ktor 3.x
-- **Real-time**: WebSockets with server heartbeat pings
+- **Realtime**: WebSockets
 - **Frontend**: HTMX + vanilla JavaScript
 - **Templating**: kotlinx.html (server-side)
-- **Styling**: Custom CSS with dark theme
+- **Styling**: Custom CSS
 
 ## Quick Start
-
-### Using Docker (Recommended)
-
-```bash
-# Build the image
-docker build -t marble-game .
-
-# Run the container
-docker run -d -p 8080:8080 --name marble-game marble-game
-
-# Open in browser
-open http://localhost:8080
-
-# Stop the container
-docker stop marble-game
-```
 
 ### Using Gradle
 
 ```bash
-# Run the server
 ./gradlew run
-
-# Open in browser
 open http://localhost:8080
 ```
 
 ### Development Scripts
 
-For local development, use the provided scripts that automatically disable analytics:
-
 ```bash
 ./dev-start.sh   # Start dev server in background (PostHog disabled)
 ./dev-stop.sh    # Stop the dev server
-./dev-reload.sh  # Restart the dev server (after code changes)
+./dev-reload.sh  # Restart the dev server
 
 # View server logs
 tail -f dev-server.log
 ```
 
-## How to Play
-
-1. Open the game in your browser
-2. Enter your name and create a new game
-3. Share the game link with friends
-4. Wait for everyone to join, then start!
-5. Take turns placing marbles and guessing
-
-## Building
-
-| Task | Description |
-|------|-------------|
-| `./dev-start.sh` | Start dev server with analytics disabled |
-| `./dev-stop.sh` | Stop the dev server |
-| `./dev-reload.sh` | Restart the dev server |
-| `./gradlew run` | Run the server (with analytics enabled) |
-| `./gradlew build` | Build everything |
-| `./gradlew shadowJar` | Build executable JAR with all dependencies |
-| `./gradlew test` | Run unit tests |
-| `npm run test:e2e` | Run E2E tests (Playwright) |
-| `npm run health:realtime:local` | Automated marbles+chess realtime health probe (local) |
-| `npm run health:realtime:prod` | Automated marbles+chess realtime health probe (production) |
-| `docker build -t marble-game .` | Build Docker image (~221MB) |
-
 ## Testing
 
-Run all tests with a single command:
+Run all tests:
 
 ```bash
-./test.sh                  # Kotlin unit tests + fast E2E tests (~10s)
-./test.sh --full           # Kotlin unit tests + ALL E2E tests (~2-3 min)
-./test.sh --headed         # With browser visible
-./test.sh --full --headed  # All tests with browser visible
+./test.sh
+./test.sh --full
 ```
 
-### Unit Tests (Kotlin)
+Direct commands:
 
 ```bash
 ./gradlew test
-```
-
-### E2E Tests (Playwright)
-
-E2E tests use Playwright and automatically start the server with `POSTHOG_ENABLED=false` to prevent analytics from being triggered during testing.
-
-```bash
-# Install dependencies (first time only)
-npm install
-npx playwright install chromium
-
-# Run all E2E tests
 npm run test:e2e
-
-# Run fast tests only (~5 seconds) - recommended for CI
-npm run test:e2e:fast
-
-# Run slow tests only (~2 minutes) - gameplay + disconnect scenarios
-npm run test:e2e:slow
-
-# Run with browser visible
-npm run test:e2e:headed
-npm run test:e2e:fast:headed
-npm run test:e2e:slow:headed
-
-# Run with Playwright UI
-npm run test:e2e:ui
-
-# Debug mode
-npm run test:e2e:debug
 ```
 
 Production manual verification runbook:
 
 - `docs/manual-prod-live-check.md`
 
-**Test categories:**
-- **Fast tests (21)**: Homepage, game creation, joining, multiplayer flow, static pages
-- **Slow tests (4)**: Host disconnect transfer, player disconnect during game, winner determination, host disconnect on game over (require gameplay/grace period timeouts)
+## Realtime Health Probe
+
+```bash
+npm run health:realtime:local
+npm run health:realtime:prod
+```
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `POSTHOG_ENABLED` | `true` | Set to `false` to disable PostHog analytics and cookie banner |
-| `REALTIME_ALLOWED_ORIGINS` | same-origin | Optional comma-separated WS Origin allowlist (e.g. `https://example.com,https://staging.example.com`) |
+| `REALTIME_ALLOWED_ORIGINS` | same-origin | Optional comma-separated WS Origin allowlist |
 | `REALTIME_ALLOW_NULL_ORIGIN` | `false` | Optional; only set `true` if `Origin: null` WS clients must be allowed |
-| `CHESS_RESUME_STALE_PING_MS` | `15000` | Optional stale-open WS threshold for chess resume recovery (clamped 5000-120000) |
-
-Note: server-side maintenance is now ticker-driven (disconnect expiry, marbles round auto-advance, chess clocks, chess auto-restart). The old polling endpoints were removed.
-
-Example:
-```bash
-# Run with analytics disabled
-POSTHOG_ENABLED=false ./gradlew run
-```
 
 ## Project Structure
 
 ```
 src/main/kotlin/
-├── Application.kt    # Ktor setup, sessions, plugins
-├── Game.kt           # Game class, phases, and round result logic
-├── GameManager.kt    # Singleton managing all active games (with auto-cleanup)
-├── GameRenderer.kt   # HTML rendering functions for game UI
-├── Player.kt         # Player state, connection handling, grace period
-├── Routing.kt        # Routing composition and WS setup
-├── RoutePages.kt     # Home/imprint/privacy routes
-├── RouteMarbles.kt   # Marbles game routes and WS endpoint
-├── RouteChess.kt     # Chess game routes and WS endpoint
-├── RouteShared.kt    # QR/static/icon shared routes
-└── Templating.kt     # HTML templating configuration
+├── Application.kt
+├── Game.kt
+├── GameManager.kt
+├── GameRenderer.kt
+├── Player.kt
+├── Routing.kt
+├── RoutePages.kt
+├── RouteMarbles.kt
+├── RouteShared.kt
+├── RealtimeConfig.kt
+├── RealtimeMaintenanceService.kt
+├── WebSocketSessionSupport.kt
+├── QRCodeService.kt
+├── RoutingConstants.kt
+└── Translations.kt
 
-src/main/resources/
-├── application.yaml  # Server configuration (port, etc.)
-├── logback.xml       # Logging configuration
-└── static/
-    ├── htmx.min.js   # HTMX library (served locally)
-    ├── realtime.js   # Shared WS reconnect helpers
-    ├── ui-shared.js  # Shared toast/share/sound helpers
-    ├── index.html    # legacy page with home link
-    └── style.css     # Mobile-first responsive styles
+src/main/resources/static/
+├── game.js
+├── realtime.js
+├── ui-shared.js
+├── style.css
+└── assets/icons
 
-e2e/                  # Playwright E2E tests
-└── game.spec.ts      # Game flow tests
+e2e/
+└── game.spec.ts
 ```
-
-### Code Organization
-
-| File | Lines | Description |
-|------|-------|-------------|
-| `Player.kt` | ~150 | Player class with connection state, grace period logic |
-| `Game.kt` | ~600 | Core game logic, phases, marble distribution |
-| `GameManager.kt` | ~120 | Thread-safe game registry with TTL-based cleanup |
-| `GameRenderer.kt` | ~500 | Server-side HTML rendering with kotlinx.html |
-| `Routing.kt` | ~550 | HTTP routes, WebSocket endpoints, form handlers |
-| `Application.kt` | ~40 | Application entry point and session config |
-
-## Production Notes
-
-### Security
-- Session cookies use `httpOnly` and `SameSite=Lax` flags
-- Player names are limited to 30 characters
-- HTML output is XSS-protected via `escapeHtml()`
-- HTMX is served locally (no CDN dependency)
-
-### Scalability
-- Games auto-cleanup after inactivity (1h for finished, 4h for abandoned)
-- Each player has a bounded outbound signal queue with coalesced state delivery
-- Connection grace period (15s) handles brief disconnects
-
-### TODO
-
-- Split chess and marbles?
-- Setup domains(both)
-- Start with redis setup(full game state into redis) avoid loosing game state on server restart and better horizontal scalling
-- Setup posthog feedback or a own small feedback table with option on the page 
-- Can we reduce the update sizes we send to the clients? or any low hanging fruits to support more games/players?
-- Implement users
-- Implement pro user flag
-- Implement pro user features
-    - Analytics against chess engine?
-    - Fixed name with pro label next to name
-    - Make streamer mode pro user feature
-    - Store and re-watch played games
-    - Rewatched games, see were you made mistakesvs chessengine
-- Alerts for 
-    - Outages
-    - Slow response times
-- Implement payment option
-    - ....
-
-### TODO - Road to 100x Capacity
-
-Target: scale from current single-instance setup to roughly 100x more concurrent games (with spectators) in both Marble and Chess modes, while keeping move latency and reconnect behavior stable.
-
-- [ ] Define performance SLOs (e.g., p95 move propagation latency, reconnect success rate, max memory per connection)
-- [ ] Reduce per-update payload size (state deltas instead of full HTML where possible)
-- [ ] Coalesce/batch rapid broadcasts in a short debounce window to cap update frequency under burst
-- [ ] Externalize authoritative game/session state (or enforce strict sticky sessions with documented failover behavior)
-- [ ] Introduce horizontal scaling (multiple app instances behind a load balancer)
-- [ ] Externalize shared transient state needed for multi-instance realtime routing (e.g., Redis pub/sub)
-- [ ] Add shard/partition strategy by `gameId` to keep game traffic localized
-- [ ] Tune OS and runtime for high connection counts (file descriptors, TCP keepalive, JVM memory limits)
-- [ ] Add production dashboards + alerts (connections, queue depth, dropped updates, latency percentiles)
-
-See detailed migration plan: [docs/websocket-migration-plan.md](docs/websocket-migration-plan.md)
-
-Load-test baseline snapshot: [docs/load-baseline-2026-03-07.md](docs/load-baseline-2026-03-07.md)
-
-## Network
-
-The server runs on port `8080` by default. To play with others on the same network, find your local IP (e.g., `192.168.x.x`) and share `http://<your-ip>:8080`.
 
 ## Docker
 
-The project uses a multi-stage Dockerfile with Google's **distroless** base image for a minimal, secure container:
-
-- **Build stage**: `gradle:8.14-jdk21` - compiles and creates the shadow JAR
-- **Runtime stage**: `gcr.io/distroless/java21-debian12:nonroot` - minimal JRE only
-
-Benefits:
-- ~221MB image size (vs ~400-500MB with full JDK)
-- No shell or package manager (reduced attack surface)
-- Runs as non-root user
+```bash
+docker build -t marble-game .
+docker run -d -p 8080:8080 --name marble-game marble-game
+```

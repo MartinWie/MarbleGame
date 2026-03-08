@@ -25,7 +25,6 @@ async function createPlayer(browser: Browser, name: string): Promise<{ context: 
  */
 async function createGame(page: Page, playerName: string): Promise<string> {
   await page.goto('/');
-  await page.locator('.mode-tile[data-mode="marbles"]').click();
   const marblesForm = page.locator('#create-form-marbles');
   await marblesForm.locator('input[name="playerName"]').fill(playerName);
   await marblesForm.getByRole('button', { name: 'Create Marbles' }).click();
@@ -330,13 +329,10 @@ test.describe('Host Switch Logic', () => {
 });
 
 test.describe('Error Handling', () => {
-  test('join page shows form for any game ID', async ({ page }) => {
-    // The join page shows a form even for non-existent games
-    // Validation happens on form submit
+  test('invalid join page redirects to home create form', async ({ page }) => {
     const response = await page.goto('/game/00000000/join');
     
     expect(response?.status()).toBe(200);
-    await page.locator('.mode-tile[data-mode="marbles"]').click();
     await expect(page.locator('#create-form-marbles input[name="playerName"]').first()).toBeVisible();
   });
 

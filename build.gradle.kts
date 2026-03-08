@@ -63,8 +63,6 @@ tasks.jacocoTestReport {
                     include("de/mw/Game.class")
                     include("de/mw/GameManager.class")
                     include("de/mw/Player.class")
-                    include("de/mw/ChessGame.class")
-                    include("de/mw/ChessGameManager.class")
                 }
             },
         ),

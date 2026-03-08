@@ -5,7 +5,6 @@ import { performance } from 'node:perf_hooks';
 const defaults = {
   baseUrl: 'http://localhost:8080',
   mode: 'single-hotspot',
-  gameType: 'marbles',
   start: 50,
   max: 1600,
   holdSec: 20,
@@ -28,9 +27,6 @@ function parseArgs(argv) {
       i += 1;
     } else if (a === '--mode' && next) {
       args.mode = next;
-      i += 1;
-    } else if (a === '--game' && next) {
-      args.gameType = next;
       i += 1;
     } else if (a === '--start' && next) {
       args.start = parseInt(next, 10);
@@ -79,9 +75,6 @@ function validateArgs(args) {
     throw new Error(`Invalid --mode '${args.mode}'. Use single-hotspot|many-small|mixed.`);
   }
 
-  if (!['marbles', 'chess'].includes(args.gameType)) {
-    throw new Error(`Invalid --game '${args.gameType}'. Use marbles|chess.`);
-  }
 
   if (!(args.stepMode.startsWith('x') || args.stepMode.startsWith('+'))) {
     throw new Error(`Invalid --step '${args.stepMode}'. Use xN or +N.`);
@@ -150,11 +143,11 @@ function wsUrlFromBase(baseUrl, path) {
   return `${protocol}//${u.host}${path}`;
 }
 
-async function createGame(baseUrl, gameType) {
+async function createGame(baseUrl) {
   const rootResp = await fetch(`${baseUrl}/`, { redirect: 'manual' });
   const rootCookies = cookieHeaderFromSetCookie(safeSetCookieArray(rootResp.headers));
 
-  const endpoint = gameType === 'chess' ? '/chess/create' : '/game/create';
+  const endpoint = '/game/create';
   const body = new URLSearchParams({ playerName: randomName('host') });
   const resp = await fetch(`${baseUrl}${endpoint}`, {
     method: 'POST',
@@ -179,11 +172,11 @@ async function createGame(baseUrl, gameType) {
   return { gameId, hostCookie: rootCookies };
 }
 
-async function joinGame(baseUrl, gameType, gameId, playerName) {
+async function joinGame(baseUrl, gameId, playerName) {
   const rootResp = await fetch(`${baseUrl}/`, { redirect: 'manual' });
   const rootCookies = cookieHeaderFromSetCookie(safeSetCookieArray(rootResp.headers));
 
-  const endpoint = gameType === 'chess' ? '/chess/join' : '/game/join';
+  const endpoint = '/game/join';
   const form = new URLSearchParams({ playerName, gameId });
 
   const resp = await fetch(`${baseUrl}${endpoint}`, {
@@ -205,8 +198,8 @@ async function joinGame(baseUrl, gameType, gameId, playerName) {
   return joinedCookieHeader || rootCookies;
 }
 
-async function connectWs(baseUrl, gameType, gameId, cookieHeader) {
-  const path = gameType === 'chess' ? `/ws/chess/${gameId}` : `/ws/game/${gameId}`;
+async function connectWs(baseUrl, gameId, cookieHeader) {
+  const path = `/ws/game/${gameId}`;
   const wsUrl = wsUrlFromBase(baseUrl, path);
   const t0 = performance.now();
 
@@ -314,10 +307,10 @@ async function runPlayerTasks(args, tasks, stats, rampMs) {
       }
 
       try {
-        const cookie = await joinGame(args.baseUrl, args.gameType, task.gameId, task.playerName);
+        const cookie = await joinGame(args.baseUrl, task.gameId, task.playerName);
         stats.joinOk += 1;
 
-        const wsRes = await connectWs(args.baseUrl, args.gameType, task.gameId, cookie);
+        const wsRes = await connectWs(args.baseUrl, task.gameId, cookie);
         if (!wsRes.ok) {
           stats.wsFail += 1;
           bumpReason(stats.wsFailReasons, wsRes.error || 'ws-fail');
@@ -402,7 +395,7 @@ async function runSingleHotspotMode(args) {
 
   while (size <= args.max) {
     console.log(`\nStage: target=${size} players`);
-    const { gameId } = await createGame(args.baseUrl, args.gameType);
+    const { gameId } = await createGame(args.baseUrl);
     console.log(`Stage game: ${gameId}`);
 
     const stats = createStats(`single-hotspot-${size}`, size, { gameId });
@@ -433,7 +426,7 @@ async function runManySmallMode(args) {
 
   const gameIds = [];
   for (let i = 0; i < args.games; i += 1) {
-    const created = await createGame(args.baseUrl, args.gameType);
+    const created = await createGame(args.baseUrl);
     gameIds.push(created.gameId);
   }
 
@@ -468,10 +461,10 @@ async function runMixedMode(args) {
     `\nMode mixed: hotspotPlayers=${args.hotspotPlayers}, smallGames=${args.games}, playersPerGame=${args.playersPerGame}`,
   );
 
-  const hotspot = await createGame(args.baseUrl, args.gameType);
+  const hotspot = await createGame(args.baseUrl);
   const gameIds = [];
   for (let i = 0; i < args.games; i += 1) {
-    const created = await createGame(args.baseUrl, args.gameType);
+    const created = await createGame(args.baseUrl);
     gameIds.push(created.gameId);
   }
 

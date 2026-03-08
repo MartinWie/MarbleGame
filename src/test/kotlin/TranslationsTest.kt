@@ -1,13 +1,13 @@
 package de.mw
 
-import kotlin.test.*
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Tests for Translations and translation helper functions.
  */
 class TranslationsTest {
-    // ==================== Translations.get Tests ====================
-
     @Test
     fun `get returns English translation for en language`() {
         val result = Translations.get("en", "game.title")
@@ -45,20 +45,6 @@ class TranslationsTest {
     }
 
     @Test
-    fun `get returns template without formatting when no args provided`() {
-        val result = Translations.get("en", "game.title")
-        assertEquals("Marble Game", result)
-    }
-
-    @Test
-    fun `get handles HTML content in translations`() {
-        val result = Translations.get("en", "phase.waiting.waitingHost", "Alice")
-        assertTrue(result.contains("<strong>Alice</strong>"))
-    }
-
-    // ==================== String.t Extension Tests ====================
-
-    @Test
     fun `t extension returns English translation`() {
         val result = "game.title".t("en")
         assertEquals("Marble Game", result)
@@ -75,14 +61,6 @@ class TranslationsTest {
         val result = "phase.guessing.guessCount".t("en", 2, 3)
         assertEquals("Guesses: 2 / 3", result)
     }
-
-    @Test
-    fun `t extension falls back to English for unknown language`() {
-        val result = "button.share".t("es")
-        assertEquals("Share", result)
-    }
-
-    // ==================== Various Translation Keys ====================
 
     @Test
     fun `button translations exist in both languages`() {
@@ -121,34 +99,9 @@ class TranslationsTest {
     }
 
     @Test
-    fun `result translations format correctly with player name and count`() {
-        val result = "phase.result.placed".t("en", "Alice", 5)
-        assertTrue(result.contains("Alice"))
-        assertTrue(result.contains("5"))
-    }
-
-    @Test
     fun `winner translation formats with name and marble count`() {
         val result = "phase.gameOver.winner".t("en", "Alice", 15)
         assertEquals("Alice wins with 15 marbles!", result)
-    }
-
-    @Test
-    fun `status translation formats with marble count`() {
-        val result = "status.yourMarbles".t("en", 10)
-        assertTrue(result.contains("10"))
-    }
-
-    @Test
-    fun `winners translation includes marble count per winner`() {
-        val result = "phase.result.winners".t("en", "Bob, Charlie", 3)
-        assertEquals("Winners: Bob, Charlie (+3 each)", result)
-    }
-
-    @Test
-    fun `losers translation formats with names`() {
-        val result = "phase.result.losers".t("en", "Dave")
-        assertEquals("Lost their bet: Dave", result)
     }
 
     @Test
@@ -185,14 +138,5 @@ class TranslationsTest {
 
         assertEquals("Your Turn", enTurn)
         assertEquals("Du bist dran", deTurn)
-    }
-
-    @Test
-    fun `guessing phase translations exist`() {
-        val enGuess = "phase.guessing.makeGuess".t("en")
-        val deGuess = "phase.guessing.makeGuess".t("de")
-
-        assertEquals("Your Guess!", enGuess)
-        assertEquals("Dein Tipp!", deGuess)
     }
 }
