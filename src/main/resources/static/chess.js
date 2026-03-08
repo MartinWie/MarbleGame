@@ -42,6 +42,14 @@ function initChess(gameId) {
     var audioUnlocked = false;
     var previousTurnColor = '';
     var lastAnimatedMoveMeta = '';
+    var rightArrowFromSquare = null;
+    var rightArrowDragActive = false;
+    var boardArrows = [];
+    var boardMarks = [];
+    var boardArrowPreview = null;
+    var boardArrowHeadId = 'chess-arrow-head-' + gameId;
+    var boardArrowHeadAltId = 'chess-arrow-head-alt-' + gameId;
+    var boardArrowGlobalBound = false;
 
     function closeRealtimeConnection() {
         if (connectWatchdogTimeout) {
@@ -560,11 +568,19 @@ function initChess(gameId) {
 
         var currentPerspective = currentBoard.getAttribute('data-perspective') || 'white';
         var incomingPerspective = incomingBoard.getAttribute('data-perspective') || 'white';
-        if (currentPerspective !== incomingPerspective) return false;
+        if (currentPerspective !== incomingPerspective) {
+            clearBoardAnnotations();
+            return false;
+        }
+
+        if (currentBoard.querySelector('.square-label') && !incomingBoard.querySelector('.square-label')) return false;
 
         var currentYourColor = currentBoard.getAttribute('data-your-color') || '';
         var incomingYourColor = incomingBoard.getAttribute('data-your-color') || '';
-        if (currentYourColor !== incomingYourColor) return false;
+        if (currentYourColor !== incomingYourColor) {
+            clearBoardAnnotations();
+            return false;
+        }
 
         var currentFirstSquare = currentBoard.querySelector('.chess-square');
         var incomingFirstSquare = incomingBoard.querySelector('.chess-square');
@@ -642,9 +658,28 @@ function initChess(gameId) {
                 currentPieceEl.className = incomingPieceEl.className;
                 currentPieceEl.textContent = incomingPieceEl.textContent || '';
             }
+
+            var currentRankLabel = squareEl.querySelector('.rank-label');
+            var incomingRankLabel = incomingSquare.querySelector('.rank-label');
+            if (incomingRankLabel && !currentRankLabel) {
+                var newRankLabel = incomingRankLabel.cloneNode(true);
+                squareEl.insertBefore(newRankLabel, squareEl.firstChild);
+            } else if (!incomingRankLabel && currentRankLabel) {
+                currentRankLabel.remove();
+            }
+
+            var currentFileLabel = squareEl.querySelector('.file-label');
+            var incomingFileLabel = incomingSquare.querySelector('.file-label');
+            if (incomingFileLabel && !currentFileLabel) {
+                var newFileLabel = incomingFileLabel.cloneNode(true);
+                squareEl.insertBefore(newFileLabel, squareEl.firstChild);
+            } else if (!incomingFileLabel && currentFileLabel) {
+                currentFileLabel.remove();
+            }
         });
 
         applyHighlights();
+        renderBoardArrows();
     }
 
     function applyRenderedState(htmlFragment) {
@@ -836,6 +871,208 @@ function initChess(gameId) {
         ghost.style.pointerEvents = 'none';
         document.body.appendChild(ghost);
         return ghost;
+    }
+
+    function supportsRightMouseArrows() {
+        if (!window.matchMedia) return false;
+        return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    }
+
+    function ensureArrowLayer() {
+        var boardShell = document.getElementById('chess-board-shell');
+        var boardEl = boardShell ? boardShell.querySelector('.chess-board') : null;
+        if (!boardShell || !boardEl) return null;
+
+        var svg = boardShell.querySelector('.chess-arrow-layer');
+        if (!svg) {
+            var ns = 'http://www.w3.org/2000/svg';
+            svg = document.createElementNS(ns, 'svg');
+            svg.classList.add('chess-arrow-layer');
+            svg.setAttribute('aria-hidden', 'true');
+            svg.setAttribute('focusable', 'false');
+
+            var defs = document.createElementNS(ns, 'defs');
+            var marker = document.createElementNS(ns, 'marker');
+            marker.setAttribute('id', boardArrowHeadId);
+            marker.setAttribute('markerWidth', '14');
+            marker.setAttribute('markerHeight', '14');
+            marker.setAttribute('refX', '10');
+            marker.setAttribute('refY', '7');
+            marker.setAttribute('orient', 'auto');
+            marker.setAttribute('markerUnits', 'userSpaceOnUse');
+
+            var markerPath = document.createElementNS(ns, 'path');
+            markerPath.setAttribute('d', 'M 0 0 L 14 7 L 0 14 z');
+            markerPath.setAttribute('fill', 'rgba(255, 198, 105, 0.88)');
+
+            var markerAlt = document.createElementNS(ns, 'marker');
+            markerAlt.setAttribute('id', boardArrowHeadAltId);
+            markerAlt.setAttribute('markerWidth', '14');
+            markerAlt.setAttribute('markerHeight', '14');
+            markerAlt.setAttribute('refX', '10');
+            markerAlt.setAttribute('refY', '7');
+            markerAlt.setAttribute('orient', 'auto');
+            markerAlt.setAttribute('markerUnits', 'userSpaceOnUse');
+
+            var markerPathAlt = document.createElementNS(ns, 'path');
+            markerPathAlt.setAttribute('d', 'M 0 0 L 14 7 L 0 14 z');
+            markerPathAlt.setAttribute('fill', 'rgba(115, 220, 255, 0.9)');
+            defs.appendChild(marker);
+            marker.appendChild(markerPath);
+            defs.appendChild(markerAlt);
+            markerAlt.appendChild(markerPathAlt);
+            svg.appendChild(defs);
+            boardShell.appendChild(svg);
+        }
+
+        var boardRect = boardEl.getBoundingClientRect();
+        var width = Math.max(1, Math.round(boardRect.width));
+        var height = Math.max(1, Math.round(boardRect.height));
+        svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+        return svg;
+    }
+
+    function squareCenterPoint(square) {
+        var boardEl = document.querySelector('.chess-board');
+        if (!boardEl) return null;
+        var squareEl = boardEl.querySelector('.chess-square[data-square="' + square + '"]');
+        if (!squareEl) return null;
+
+        var boardRect = boardEl.getBoundingClientRect();
+        var squareRect = squareEl.getBoundingClientRect();
+        return {
+            x: (squareRect.left - boardRect.left) + (squareRect.width / 2),
+            y: (squareRect.top - boardRect.top) + (squareRect.height / 2),
+            boardWidth: boardRect.width,
+        };
+    }
+
+    function drawBoardArrow(svg, arrow) {
+        if (!arrow || !arrow.from || !arrow.to || arrow.from === arrow.to) return;
+        var fromPoint = squareCenterPoint(arrow.from);
+        var toPoint = squareCenterPoint(arrow.to);
+        if (!fromPoint || !toPoint) return;
+
+        var dx = toPoint.x - fromPoint.x;
+        var dy = toPoint.y - fromPoint.y;
+        var len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 4) return;
+
+        var dirX = dx / len;
+        var dirY = dy / len;
+        var startPad = Math.min(15, len * 0.2);
+        var endPad = Math.min(26, len * 0.32);
+        var x1 = fromPoint.x + (dirX * startPad);
+        var y1 = fromPoint.y + (dirY * startPad);
+        var x2 = toPoint.x - (dirX * endPad);
+        var y2 = toPoint.y - (dirY * endPad);
+        var strokeWidth = Math.max(4, Math.min(8.5, fromPoint.boardWidth / 88));
+        var markerId = arrow.alt ? boardArrowHeadAltId : boardArrowHeadId;
+
+        var ns = 'http://www.w3.org/2000/svg';
+        var line = document.createElementNS(ns, 'line');
+        line.classList.add('chess-arrow-shape', 'chess-arrow-line');
+        if (arrow.preview) line.classList.add('preview');
+        if (arrow.alt) line.classList.add('alt');
+        line.setAttribute('x1', String(x1));
+        line.setAttribute('y1', String(y1));
+        line.setAttribute('x2', String(x2));
+        line.setAttribute('y2', String(y2));
+        line.setAttribute('stroke-width', String(strokeWidth));
+        line.setAttribute('marker-end', 'url(#' + markerId + ')');
+
+        var originDot = document.createElementNS(ns, 'circle');
+        originDot.classList.add('chess-arrow-shape', 'chess-arrow-origin');
+        if (arrow.preview) originDot.classList.add('preview');
+        if (arrow.alt) originDot.classList.add('alt');
+        originDot.setAttribute('cx', String(x1));
+        originDot.setAttribute('cy', String(y1));
+        originDot.setAttribute('r', String(Math.max(2.2, strokeWidth * 0.4)));
+
+        svg.appendChild(line);
+        svg.appendChild(originDot);
+    }
+
+    function renderBoardArrows() {
+        var svg = ensureArrowLayer();
+        if (!svg) return;
+
+        svg.querySelectorAll('.chess-arrow-shape').forEach(function(el) {
+            el.remove();
+        });
+
+        boardArrows.forEach(function(arrow) {
+            drawBoardArrow(svg, arrow);
+        });
+
+        if (boardArrowPreview) {
+            drawBoardArrow(svg, { from: boardArrowPreview.from, to: boardArrowPreview.to, alt: !!boardArrowPreview.alt, preview: true });
+        }
+
+        document.querySelectorAll('.chess-square.marked, .chess-square.marked-alt').forEach(function(el) {
+            el.classList.remove('marked', 'marked-alt');
+        });
+        boardMarks.forEach(function(mark) {
+            var squareEl = document.querySelector('.chess-square[data-square="' + mark.square + '"]');
+            if (!squareEl) return;
+            squareEl.classList.add(mark.alt ? 'marked-alt' : 'marked');
+        });
+    }
+
+    function clearBoardAnnotations() {
+        if (!boardArrows.length && !boardMarks.length && !boardArrowPreview) return;
+        boardArrows = [];
+        boardMarks = [];
+        boardArrowPreview = null;
+        renderBoardArrows();
+    }
+
+    window.__chessDebug = window.__chessDebug || {};
+    window.__chessDebug.clearAnnotations = clearBoardAnnotations;
+    window.__chessDebug.getAnnotations = function() {
+        return {
+            arrows: boardArrows.map(function(a) { return { from: a.from, to: a.to, alt: !!a.alt }; }),
+            marks: boardMarks.map(function(m) { return { square: m.square, alt: !!m.alt }; }),
+            preview: boardArrowPreview ? { from: boardArrowPreview.from, to: boardArrowPreview.to, alt: !!boardArrowPreview.alt } : null,
+        };
+    };
+
+    function toggleBoardMark(square, alt) {
+        if (!square) return;
+        var existingIndex = -1;
+        for (var i = 0; i < boardMarks.length; i += 1) {
+            if (boardMarks[i].square === square && !!boardMarks[i].alt === !!alt) {
+                existingIndex = i;
+                break;
+            }
+        }
+        if (existingIndex >= 0) {
+            boardMarks.splice(existingIndex, 1);
+        } else {
+            boardMarks.push({ square: square, alt: !!alt });
+        }
+        renderBoardArrows();
+    }
+
+    function toggleBoardArrow(fromSquare, toSquare, alt) {
+        if (!fromSquare || !toSquare) return;
+        if (fromSquare === toSquare) {
+            toggleBoardMark(fromSquare, alt);
+            return;
+        }
+        var existingIndex = -1;
+        for (var i = 0; i < boardArrows.length; i += 1) {
+            if (boardArrows[i].from === fromSquare && boardArrows[i].to === toSquare && !!boardArrows[i].alt === !!alt) {
+                existingIndex = i;
+                break;
+            }
+        }
+        if (existingIndex >= 0) {
+            boardArrows.splice(existingIndex, 1);
+        } else {
+            boardArrows.push({ from: fromSquare, to: toSquare, alt: !!alt });
+        }
+        renderBoardArrows();
     }
 
     function clearHighlights() {
@@ -1373,6 +1610,22 @@ function initChess(gameId) {
         var toInput = document.getElementById('chess-to');
         if (!fromInput || !toInput) return;
 
+        if (!boardArrowGlobalBound) {
+            boardArrowGlobalBound = true;
+            document.addEventListener('mouseup', function(ev) {
+                if (ev.button !== 2) return;
+                if (rightArrowDragActive) {
+                    boardArrowPreview = null;
+                    renderBoardArrows();
+                }
+                rightArrowDragActive = false;
+                rightArrowFromSquare = null;
+            });
+            window.addEventListener('resize', function() {
+                renderBoardArrows();
+            });
+        }
+
         function setSelectedSquare(square) {
             selectedFrom = square;
             toInput.value = '';
@@ -1397,6 +1650,9 @@ function initChess(gameId) {
         }
 
         function activateSquare(square, currentPiece) {
+            if (supportsRightMouseArrows() && (boardArrows.length > 0 || boardMarks.length > 0 || boardArrowPreview)) {
+                clearBoardAnnotations();
+            }
             if (!selectedFrom) {
                 var startPiece = currentPiece();
                 if (!startPiece || !isOwnPiece(startPiece)) return;
@@ -1438,6 +1694,49 @@ function initChess(gameId) {
                 if (Date.now() < suppressClickUntil) return;
                 if (Date.now() - lastTouchHandledAt < 600 && lastTouchHandledSquare === square) return;
                 activateSquare(square, currentPiece);
+            });
+
+            squareEl.addEventListener('contextmenu', function(ev) {
+                if (!supportsRightMouseArrows()) return;
+                ev.preventDefault();
+            });
+
+            squareEl.addEventListener('mousedown', function(ev) {
+                if (!supportsRightMouseArrows()) return;
+                if (ev.button !== 2) return;
+                ev.preventDefault();
+                rightArrowFromSquare = square;
+                rightArrowDragActive = true;
+                boardArrowPreview = { from: square, to: square, alt: !!ev.shiftKey };
+                renderBoardArrows();
+            });
+
+            squareEl.addEventListener('mouseup', function(ev) {
+                if (!supportsRightMouseArrows()) return;
+                if (ev.button !== 2) return;
+                if (!rightArrowDragActive || !rightArrowFromSquare) return;
+                ev.preventDefault();
+                boardArrowPreview = null;
+                toggleBoardArrow(rightArrowFromSquare, square, !!ev.shiftKey);
+                rightArrowDragActive = false;
+                rightArrowFromSquare = null;
+            });
+
+            squareEl.addEventListener('mouseenter', function(ev) {
+                if (!supportsRightMouseArrows()) return;
+                if (!rightArrowDragActive || !rightArrowFromSquare) return;
+                boardArrowPreview = { from: rightArrowFromSquare, to: square, alt: !!ev.shiftKey };
+                renderBoardArrows();
+            });
+
+            squareEl.addEventListener('mousemove', function(ev) {
+                if (!supportsRightMouseArrows()) return;
+                if (!rightArrowDragActive || !rightArrowFromSquare) return;
+                var alt = !!ev.shiftKey;
+                if (!boardArrowPreview || boardArrowPreview.to !== square || !!boardArrowPreview.alt !== alt) {
+                    boardArrowPreview = { from: rightArrowFromSquare, to: square, alt: alt };
+                    renderBoardArrows();
+                }
             });
 
             squareEl.addEventListener('dragstart', function(ev) {
@@ -1680,6 +1979,7 @@ function initChess(gameId) {
 
         applyHighlights();
         updateMoveUI();
+        renderBoardArrows();
         maybeShowCoachmark();
     }
 

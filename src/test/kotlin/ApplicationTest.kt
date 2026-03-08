@@ -62,6 +62,20 @@ class ApplicationTest {
             }
         }
 
+    @Test
+    fun `home page includes home init script for persisted chess preferences`() =
+        testApplication {
+            application {
+                module()
+            }
+            client.get("/").apply {
+                assertEquals(HttpStatusCode.OK, status)
+                val body = bodyAsText()
+                assertTrue(body.contains("/static/home.js"))
+                assertTrue(body.contains("initHomePage();"))
+            }
+        }
+
     // ==================== Language Detection Tests ====================
 
     @Test

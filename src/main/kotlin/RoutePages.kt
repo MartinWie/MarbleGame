@@ -18,7 +18,17 @@ internal fun Route.registerPageRoutes() {
         val lang = call.getLanguage()
 
         call.respondHtml {
-            basePage("home.title".t(lang), lang, includeHtmx = true) {
+            basePage(
+                title = "home.title".t(lang),
+                lang = lang,
+                includeHtmx = true,
+                extraBodyContent = {
+                    script(src = "/static/home.js") {}
+                    script {
+                        unsafe { +"initHomePage();" }
+                    }
+                },
+            ) {
                 h1 { +"home.title".t(lang) }
 
                 if (error == "game_not_found") {

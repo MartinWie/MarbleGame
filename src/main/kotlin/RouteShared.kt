@@ -11,21 +11,42 @@ import io.ktor.server.routing.*
 internal fun isAllowedWebSocketOrigin(call: ApplicationCall): Boolean {
     val origin = call.request.headers[HttpHeaders.Origin] ?: return true
     val normalizedOrigin = origin.removeSuffix("/").lowercase()
-    if (RealtimeConfig.allowedOrigins.isEmpty()) {
-        val req = call.request.origin
-        val scheme = req.scheme.lowercase()
-        val host = req.serverHost.lowercase()
-        val port = req.serverPort
-        val defaultPort = if (scheme == "https") 443 else 80
-        val withPort = "$scheme://$host:$port"
-        val withoutPort = "$scheme://$host"
-        return if (port == defaultPort) {
-            normalizedOrigin == withoutPort || normalizedOrigin == withPort
-        } else {
-            normalizedOrigin == withPort
+    val allowedOrigins = RealtimeConfig.allowedOrigins
+    if (normalizedOrigin == "null") {
+        return RealtimeConfig.allowNullOrigin
+    }
+
+    if (allowedOrigins.isNotEmpty()) {
+        return allowedOrigins.contains(normalizedOrigin)
+    }
+
+    val hostHeader =
+        call.request.headers[HttpHeaders.Host]
+            ?.trim()
+            ?.lowercase()
+    if (!hostHeader.isNullOrBlank()) {
+        val hostWithoutPort = hostHeader.substringBefore(':')
+        val originHost =
+            runCatching {
+                Url(normalizedOrigin).host.lowercase()
+            }.getOrNull()
+        if (originHost != null && originHost == hostWithoutPort) {
+            return true
         }
     }
-    return RealtimeConfig.allowedOrigins.contains(normalizedOrigin)
+
+    val req = call.request.origin
+    val scheme = req.scheme.lowercase()
+    val host = req.serverHost.lowercase()
+    val port = req.serverPort
+    val defaultPort = if (scheme == "https") 443 else 80
+    val withPort = "$scheme://$host:$port"
+    val withoutPort = "$scheme://$host"
+    return if (port == defaultPort) {
+        normalizedOrigin == withoutPort || normalizedOrigin == withPort
+    } else {
+        normalizedOrigin == withPort
+    }
 }
 
 internal fun Route.registerSharedRoutes() {

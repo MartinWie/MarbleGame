@@ -138,6 +138,27 @@ test.describe('Game Creation', () => {
     await timedToggle.click();
     await expect(minutesWrap).toHaveClass(/hidden/);
   });
+
+  test('chess timed toggle and round minutes persist via local storage', async ({ page }) => {
+    await page.goto('/');
+
+    await modeCard(page).locator('.mode-tile[data-mode="chess"]').click();
+    const timedToggle = chessForm(page).locator('label.option-checkbox').first();
+    const minutesWrap = chessForm(page).locator('#timed-config-wrap');
+    const minutesInput = chessForm(page).locator('#clock-minutes');
+
+    await timedToggle.click();
+    await expect(minutesWrap).not.toHaveClass(/hidden/);
+    await minutesInput.fill('9');
+    await minutesInput.blur();
+
+    await page.reload();
+    await modeCard(page).locator('.mode-tile[data-mode="chess"]').click();
+
+    await expect(minutesWrap).not.toHaveClass(/hidden/);
+    await expect(chessForm(page).locator('#timed-mode')).toBeChecked();
+    await expect(minutesInput).toHaveValue('9');
+  });
 });
 
 test.describe('Chess Joining', () => {
@@ -467,6 +488,64 @@ test.describe('Chess Joining', () => {
       await expect.poll(async () => await p1.locator('.chess-square[data-square="e4"]').evaluate((el) => el.classList.contains('last-move-to'))).toBe(true);
       await expect.poll(async () => await p2.locator('.chess-square[data-square="e2"]').evaluate((el) => el.classList.contains('last-move-from'))).toBe(true);
       await expect.poll(async () => await p2.locator('.chess-square[data-square="e4"]').evaluate((el) => el.classList.contains('last-move-to'))).toBe(true);
+    } finally {
+      await p1Context.close();
+      await p2Context.close();
+    }
+  });
+
+  test('desktop right-click annotations support arrows, alt arrows, marks, and left-click clear', async ({ browser }) => {
+    const p1Context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+    const p1 = await p1Context.newPage();
+    const p2Context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+    const p2 = await p2Context.newPage();
+
+    try {
+      const gameId = await createChessGame(p1, 'Host');
+      await joinChessGame(p2, gameId, 'Opponent');
+
+      const d2 = p1.locator('.chess-square[data-square="d2"]');
+      const d4 = p1.locator('.chess-square[data-square="d4"]');
+      const c2 = p1.locator('.chess-square[data-square="c2"]');
+      const c4 = p1.locator('.chess-square[data-square="c4"]');
+      const e2 = p1.locator('.chess-square[data-square="e2"]');
+
+      const center = async (loc: ReturnType<Page['locator']>) => {
+        const box = await loc.boundingBox();
+        if (!box) throw new Error('Missing square bounding box');
+        return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      };
+
+      const d2p = await center(d2);
+      const d4p = await center(d4);
+      await p1.mouse.move(d2p.x, d2p.y);
+      await p1.mouse.down({ button: 'right' });
+      await p1.mouse.move(d4p.x, d4p.y);
+      await expect(p1.locator('.chess-arrow-line.preview')).toHaveCount(1);
+      await p1.mouse.up({ button: 'right' });
+      await expect(p1.locator('.chess-arrow-line.preview')).toHaveCount(0);
+
+      await expect(p1.locator('.chess-arrow-line')).toHaveCount(1);
+
+      const c2p = await center(c2);
+      const c4p = await center(c4);
+      await p1.keyboard.down('Shift');
+      await p1.mouse.move(c2p.x, c2p.y);
+      await p1.mouse.down({ button: 'right' });
+      await p1.mouse.move(c4p.x, c4p.y);
+      await expect(p1.locator('.chess-arrow-line.preview.alt')).toHaveCount(1);
+      await p1.mouse.up({ button: 'right' });
+      await p1.keyboard.up('Shift');
+      await expect(p1.locator('.chess-arrow-line.alt')).toHaveCount(1);
+
+      await p1.keyboard.down('Shift');
+      await d2.click({ button: 'right' });
+      await p1.keyboard.up('Shift');
+      await expect(d2).toHaveClass(/marked-alt/);
+
+      await e2.click();
+      await expect(p1.locator('.chess-arrow-line')).toHaveCount(0);
+      await expect(p1.locator('.chess-square.marked, .chess-square.marked-alt')).toHaveCount(0);
     } finally {
       await p1Context.close();
       await p2Context.close();
