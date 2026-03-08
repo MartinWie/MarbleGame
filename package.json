@@ -13,7 +13,9 @@
     "test:e2e:slow:headed": "playwright test --grep @slow --headed",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
-    "test:e2e:debug": "playwright test --debug"
+    "test:e2e:debug": "playwright test --debug",
+    "health:realtime:prod": "node scripts/prod-health-check.mjs --base https://games.7mw.de",
+    "health:realtime:local": "node scripts/prod-health-check.mjs --base http://localhost:8080"
   },
   "repository": {
     "type": "git",

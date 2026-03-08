@@ -8,6 +8,11 @@ function initChess(gameId) {
     var countdownInterval = null;
     var reconnectTimeout = null;
     var isConnecting = false;
+    var connectAttemptStartedAt = 0;
+    var lastResumeReconnectAt = 0;
+    var debugLastResumeTrigger = 0;
+    var debugResumeReconnectAttempts = 0;
+    var debugDisableScheduledReconnect = false;
     var reconnectDelayMs = 1000;
     var connectWatchdogTimeout = null;
     var realtimeShared = window.realtimeShared;
@@ -446,6 +451,9 @@ function initChess(gameId) {
     }
 
     function scheduleReconnect() {
+        if (debugDisableScheduledReconnect) {
+            return;
+        }
         if (realtimeShared) {
             var state = {
                 reconnectTimeout: reconnectTimeout,
@@ -485,6 +493,19 @@ function initChess(gameId) {
             ? realtimeShared.wsUrl('/ws/chess/' + gameId)
             : ((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/chess/' + gameId);
         webSocket = new WebSocket(wsTarget);
+        window.__lastWs = webSocket;
+        window.__chessDebug = window.__chessDebug || {};
+        window.__chessDebug.wsState = function() {
+            return {
+                hasWs: !!webSocket,
+                readyState: webSocket ? webSocket.readyState : -1,
+                isConnecting: isConnecting,
+                reconnectDelayMs: reconnectDelayMs,
+                connectAttemptStartedAt: connectAttemptStartedAt,
+                lastResumeTriggerAt: debugLastResumeTrigger,
+                resumeReconnectAttempts: debugResumeReconnectAttempts,
+            };
+        };
         lastPingTime = Date.now();
 
         connectWatchdogTimeout = setTimeout(function() {
@@ -497,6 +518,7 @@ function initChess(gameId) {
 
         webSocket.onopen = function() {
             isConnecting = false;
+            connectAttemptStartedAt = 0;
             reconnectDelayMs = 1000;
             consecutiveConnectFailures = 0;
             realtimeFailureBannerShown = false;
@@ -525,6 +547,7 @@ function initChess(gameId) {
 
         webSocket.onclose = function() {
             isConnecting = false;
+            connectAttemptStartedAt = 0;
             moveInFlight = false;
             if (connectWatchdogTimeout) {
                 clearTimeout(connectWatchdogTimeout);
@@ -542,6 +565,7 @@ function initChess(gameId) {
     function connect() {
         if (isConnecting) return;
         isConnecting = true;
+        connectAttemptStartedAt = Date.now();
 
         if (reconnectTimeout) {
             if (realtimeShared) {
@@ -555,6 +579,56 @@ function initChess(gameId) {
 
         closeRealtimeConnection();
         connectWs();
+    }
+
+    function ensureConnectedAfterResume() {
+        var now = Date.now();
+        if (now - lastResumeReconnectAt < 700) {
+            return;
+        }
+        lastResumeReconnectAt = now;
+
+        var readyState = webSocket ? webSocket.readyState : WebSocket.CLOSED;
+        var isOpen = readyState === WebSocket.OPEN;
+        var isConnectingSocket = readyState === WebSocket.CONNECTING;
+        var staleOpenConnection = isOpen && (now - lastPingTime > 15000);
+        var stuckConnect = (isConnecting || isConnectingSocket) && connectAttemptStartedAt > 0 && (now - connectAttemptStartedAt > 4000);
+
+        if (isOpen && !staleOpenConnection && !stuckConnect) {
+            return;
+        }
+
+        if (isConnectingSocket && !stuckConnect) {
+            return;
+        }
+
+        if (stuckConnect || !isOpen || staleOpenConnection) {
+            debugLastResumeTrigger = now;
+            debugResumeReconnectAttempts += 1;
+            isConnecting = false;
+            connect();
+        }
+    }
+
+    function debugSimulateResumeRecovery() {
+        debugLastResumeTrigger = Date.now();
+        debugResumeReconnectAttempts += 1;
+        isConnecting = false;
+        connect();
+    }
+
+    function onResumeVisibilityChange() {
+        if (document.visibilityState === 'visible') {
+            ensureConnectedAfterResume();
+        }
+    }
+
+    function onResumeFocus() {
+        ensureConnectedAfterResume();
+    }
+
+    function onResumePageShow() {
+        ensureConnectedAfterResume();
     }
 
     function patchIncrementalState(newHtml) {
@@ -896,27 +970,27 @@ function initChess(gameId) {
             marker.setAttribute('id', boardArrowHeadId);
             marker.setAttribute('markerWidth', '14');
             marker.setAttribute('markerHeight', '14');
-            marker.setAttribute('refX', '10');
+            marker.setAttribute('refX', '2.8');
             marker.setAttribute('refY', '7');
             marker.setAttribute('orient', 'auto');
             marker.setAttribute('markerUnits', 'userSpaceOnUse');
 
             var markerPath = document.createElementNS(ns, 'path');
             markerPath.setAttribute('d', 'M 0 0 L 14 7 L 0 14 z');
-            markerPath.setAttribute('fill', 'rgba(255, 198, 105, 0.88)');
+            markerPath.setAttribute('fill', '#ffc669');
 
             var markerAlt = document.createElementNS(ns, 'marker');
             markerAlt.setAttribute('id', boardArrowHeadAltId);
             markerAlt.setAttribute('markerWidth', '14');
             markerAlt.setAttribute('markerHeight', '14');
-            markerAlt.setAttribute('refX', '10');
+            markerAlt.setAttribute('refX', '2.8');
             markerAlt.setAttribute('refY', '7');
             markerAlt.setAttribute('orient', 'auto');
             markerAlt.setAttribute('markerUnits', 'userSpaceOnUse');
 
             var markerPathAlt = document.createElementNS(ns, 'path');
             markerPathAlt.setAttribute('d', 'M 0 0 L 14 7 L 0 14 z');
-            markerPathAlt.setAttribute('fill', 'rgba(115, 220, 255, 0.9)');
+            markerPathAlt.setAttribute('fill', '#73dcff');
             defs.appendChild(marker);
             marker.appendChild(markerPath);
             defs.appendChild(markerAlt);
@@ -960,13 +1034,13 @@ function initChess(gameId) {
 
         var dirX = dx / len;
         var dirY = dy / len;
-        var startPad = Math.min(15, len * 0.2);
-        var endPad = Math.min(26, len * 0.32);
+        var strokeWidth = Math.max(4, Math.min(8.5, fromPoint.boardWidth / 88));
+        var startPad = Math.min(12, len * 0.18);
+        var endPad = Math.min(len * 0.42, 11.6);
         var x1 = fromPoint.x + (dirX * startPad);
         var y1 = fromPoint.y + (dirY * startPad);
         var x2 = toPoint.x - (dirX * endPad);
         var y2 = toPoint.y - (dirY * endPad);
-        var strokeWidth = Math.max(4, Math.min(8.5, fromPoint.boardWidth / 88));
         var markerId = arrow.alt ? boardArrowHeadAltId : boardArrowHeadId;
 
         var ns = 'http://www.w3.org/2000/svg';
@@ -987,10 +1061,10 @@ function initChess(gameId) {
         if (arrow.alt) originDot.classList.add('alt');
         originDot.setAttribute('cx', String(x1));
         originDot.setAttribute('cy', String(y1));
-        originDot.setAttribute('r', String(Math.max(2.2, strokeWidth * 0.4)));
+        originDot.setAttribute('r', String(Math.max(1.5, strokeWidth * 0.42)));
 
-        svg.appendChild(line);
         svg.appendChild(originDot);
+        svg.appendChild(line);
     }
 
     function renderBoardArrows() {
@@ -1029,6 +1103,13 @@ function initChess(gameId) {
 
     window.__chessDebug = window.__chessDebug || {};
     window.__chessDebug.clearAnnotations = clearBoardAnnotations;
+    window.__chessDebug.setDisableScheduledReconnect = function(disabled) {
+        debugDisableScheduledReconnect = !!disabled;
+    };
+    window.__chessDebug.onResumeVisibilityChange = onResumeVisibilityChange;
+    window.__chessDebug.onResumeFocus = onResumeFocus;
+    window.__chessDebug.onResumePageShow = onResumePageShow;
+    window.__chessDebug.simulateResumeRecovery = debugSimulateResumeRecovery;
     window.__chessDebug.getAnnotations = function() {
         return {
             arrows: boardArrows.map(function(a) { return { from: a.from, to: a.to, alt: !!a.alt }; }),
@@ -1036,6 +1117,7 @@ function initChess(gameId) {
             preview: boardArrowPreview ? { from: boardArrowPreview.from, to: boardArrowPreview.to, alt: !!boardArrowPreview.alt } : null,
         };
     };
+    window.__chessDebug.ensureConnectedAfterResume = ensureConnectedAfterResume;
 
     function toggleBoardMark(square, alt) {
         if (!square) return;
@@ -1983,11 +2065,11 @@ function initChess(gameId) {
         maybeShowCoachmark();
     }
 
-    document.addEventListener('visibilitychange', function() {
-        if (document.visibilityState === 'visible') {
-            connect();
-        }
-    });
+    document.addEventListener('visibilitychange', onResumeVisibilityChange);
+
+    window.addEventListener('focus', onResumeFocus);
+
+    window.addEventListener('pageshow', onResumePageShow);
 
     pingCheckInterval = setInterval(function() {
         var timeSinceLastPing = Date.now() - lastPingTime;

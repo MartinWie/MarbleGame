@@ -91,6 +91,8 @@ tail -f dev-server.log
 | `./gradlew shadowJar` | Build executable JAR with all dependencies |
 | `./gradlew test` | Run unit tests |
 | `npm run test:e2e` | Run E2E tests (Playwright) |
+| `npm run health:realtime:local` | Automated marbles+chess realtime health probe (local) |
+| `npm run health:realtime:prod` | Automated marbles+chess realtime health probe (production) |
 | `docker build -t marble-game .` | Build Docker image (~221MB) |
 
 ## Testing
@@ -140,6 +142,10 @@ npm run test:e2e:ui
 npm run test:e2e:debug
 ```
 
+Production manual verification runbook:
+
+- `docs/manual-prod-live-check.md`
+
 **Test categories:**
 - **Fast tests (21)**: Homepage, game creation, joining, multiplayer flow, static pages
 - **Slow tests (4)**: Host disconnect transfer, player disconnect during game, winner determination, host disconnect on game over (require gameplay/grace period timeouts)
@@ -150,6 +156,7 @@ npm run test:e2e:debug
 |----------|---------|-------------|
 | `POSTHOG_ENABLED` | `true` | Set to `false` to disable PostHog analytics and cookie banner |
 | `REALTIME_ALLOWED_ORIGINS` | same-origin | Optional comma-separated WS Origin allowlist (e.g. `https://example.com,https://staging.example.com`) |
+| `REALTIME_ALLOW_NULL_ORIGIN` | `false` | Optional; only set `true` if `Origin: null` WS clients must be allowed |
 
 Note: server-side maintenance is now ticker-driven (disconnect expiry, marbles round auto-advance, chess clocks, chess auto-restart). The old polling endpoints were removed.
 
@@ -215,7 +222,7 @@ e2e/                  # Playwright E2E tests
 
 ### TODO
 
-- option to replay the moves (züge zurück gehen!)(not really go back, but to have the option to see how the board looked like x steps back)(left right arrow key or)
+- option to replay the moves (Züge zurück gehen!)(not really go back, but to have the option to see how the board looked like x steps back)(left right arrow key or)
 - Setup posthog feedback or a own small feedback table with option on the page 
 - Start with redis setup(full game state into redis) avoid loosing game state on server restart and better horizontal scalling
 - Can we reduce the update sizes we send to the clients? or any low hanging fruits to support more games/players?

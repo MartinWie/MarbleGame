@@ -552,6 +552,80 @@ test.describe('Chess Joining', () => {
     }
   });
 
+  test('resume reconnect helpers are present for client-side recovery hooks', async ({ browser }) => {
+    const p1Context = await browser.newContext();
+    const p1 = await p1Context.newPage();
+    const p2Context = await browser.newContext();
+    const p2 = await p2Context.newPage();
+
+    try {
+      const gameId = await createChessGame(p1, 'Host');
+      await joinChessGame(p2, gameId, 'Opponent');
+
+      await p1.evaluate(() => {
+        if (window.__chessDebug && typeof window.__chessDebug.setDisableScheduledReconnect === 'function') {
+          window.__chessDebug.setDisableScheduledReconnect(true);
+        }
+      });
+
+      const debugHooks = await p1.evaluate(() => {
+        const dbg = window.__chessDebug || {};
+        return {
+          onResumeVisibilityChange: typeof dbg.onResumeVisibilityChange,
+          onResumeFocus: typeof dbg.onResumeFocus,
+          onResumePageShow: typeof dbg.onResumePageShow,
+          simulateResumeRecovery: typeof dbg.simulateResumeRecovery,
+          setDisableScheduledReconnect: typeof dbg.setDisableScheduledReconnect,
+          wsState: typeof dbg.wsState,
+        };
+      });
+
+      expect(debugHooks.onResumeVisibilityChange).toBe('function');
+      expect(debugHooks.onResumeFocus).toBe('function');
+      expect(debugHooks.onResumePageShow).toBe('function');
+      expect(debugHooks.simulateResumeRecovery).toBe('function');
+      expect(debugHooks.setDisableScheduledReconnect).toBe('function');
+      expect(debugHooks.wsState).toBe('function');
+
+      const beforeSimulated = await p1.evaluate(() => {
+        if (window.__chessDebug && typeof window.__chessDebug.wsState === 'function') {
+          return window.__chessDebug.wsState();
+        }
+        return null;
+      });
+
+      await p1.evaluate(() => {
+        if (window.__chessDebug && typeof window.__chessDebug.simulateResumeRecovery === 'function') {
+          window.__chessDebug.simulateResumeRecovery();
+        }
+      });
+
+      await expect.poll(async () => {
+        return await p1.evaluate(() => {
+          if (window.__chessDebug && typeof window.__chessDebug.wsState === 'function') {
+            const wsState = window.__chessDebug.wsState();
+            return !!(wsState && wsState.resumeReconnectAttempts > 0);
+          }
+          return false;
+        });
+      }, { timeout: 4000 }).toBe(true);
+
+      const afterSimulated = await p1.evaluate(() => {
+        if (window.__chessDebug && typeof window.__chessDebug.wsState === 'function') {
+          return window.__chessDebug.wsState();
+        }
+        return null;
+      });
+
+      expect(beforeSimulated).not.toBeNull();
+      expect(afterSimulated).not.toBeNull();
+      expect((afterSimulated as any).resumeReconnectAttempts).toBeGreaterThan((beforeSimulated as any).resumeReconnectAttempts);
+    } finally {
+      await p1Context.close();
+      await p2Context.close();
+    }
+  });
+
 });
 
 test.describe('Game Joining', () => {
