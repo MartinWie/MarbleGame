@@ -12,15 +12,18 @@ import kotlin.test.assertEquals
 
 private const val PROP_ALLOWED_ORIGINS = "realtime.allowed.origins"
 private const val PROP_ALLOW_NULL_ORIGIN = "realtime.allow.null.origin"
+private const val PROP_CHESS_RESUME_STALE_PING_MS = "realtime.chess.resume.stale.ping.ms"
 
 class RouteSharedTest {
     private inline fun withRealtimeConfig(
         allowedOrigins: String? = null,
         allowNullOrigin: String? = null,
+        chessResumeStalePingMs: String? = null,
         block: () -> Unit,
     ) {
         val previousAllowed = System.getProperty(PROP_ALLOWED_ORIGINS)
         val previousAllowNull = System.getProperty(PROP_ALLOW_NULL_ORIGIN)
+        val previousResumeStalePing = System.getProperty(PROP_CHESS_RESUME_STALE_PING_MS)
         try {
             if (allowedOrigins != null) {
                 System.setProperty(PROP_ALLOWED_ORIGINS, allowedOrigins)
@@ -31,6 +34,11 @@ class RouteSharedTest {
                 System.setProperty(PROP_ALLOW_NULL_ORIGIN, allowNullOrigin)
             } else {
                 System.clearProperty(PROP_ALLOW_NULL_ORIGIN)
+            }
+            if (chessResumeStalePingMs != null) {
+                System.setProperty(PROP_CHESS_RESUME_STALE_PING_MS, chessResumeStalePingMs)
+            } else {
+                System.clearProperty(PROP_CHESS_RESUME_STALE_PING_MS)
             }
             block()
         } finally {
@@ -43,6 +51,11 @@ class RouteSharedTest {
                 System.setProperty(PROP_ALLOW_NULL_ORIGIN, previousAllowNull)
             } else {
                 System.clearProperty(PROP_ALLOW_NULL_ORIGIN)
+            }
+            if (previousResumeStalePing != null) {
+                System.setProperty(PROP_CHESS_RESUME_STALE_PING_MS, previousResumeStalePing)
+            } else {
+                System.clearProperty(PROP_CHESS_RESUME_STALE_PING_MS)
             }
         }
     }
@@ -151,6 +164,21 @@ class RouteSharedTest {
                 assertEquals(HttpStatusCode.OK, response.status)
                 assertEquals("ok", response.bodyAsText())
             }
+        }
+    }
+
+    @Test
+    fun `chess resume stale ping threshold respects override and clamp`() {
+        withRealtimeConfig(chessResumeStalePingMs = "25000") {
+            assertEquals(25_000L, RealtimeConfig.chessResumeStalePingMs)
+        }
+
+        withRealtimeConfig(chessResumeStalePingMs = "1000") {
+            assertEquals(5_000L, RealtimeConfig.chessResumeStalePingMs)
+        }
+
+        withRealtimeConfig(chessResumeStalePingMs = "999999") {
+            assertEquals(120_000L, RealtimeConfig.chessResumeStalePingMs)
         }
     }
 }

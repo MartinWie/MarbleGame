@@ -103,6 +103,7 @@ fun HTML.renderChessPage(
 
         div {
             id = "chess-content"
+            attributes["data-resume-stale-ping-ms"] = RealtimeConfig.chessResumeStalePingMs.toString()
             unsafe { +renderChessState(game, sessionId, lang) }
         }
     }

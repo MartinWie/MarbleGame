@@ -157,6 +157,7 @@ Production manual verification runbook:
 | `POSTHOG_ENABLED` | `true` | Set to `false` to disable PostHog analytics and cookie banner |
 | `REALTIME_ALLOWED_ORIGINS` | same-origin | Optional comma-separated WS Origin allowlist (e.g. `https://example.com,https://staging.example.com`) |
 | `REALTIME_ALLOW_NULL_ORIGIN` | `false` | Optional; only set `true` if `Origin: null` WS clients must be allowed |
+| `CHESS_RESUME_STALE_PING_MS` | `15000` | Optional stale-open WS threshold for chess resume recovery (clamped 5000-120000) |
 
 Note: server-side maintenance is now ticker-driven (disconnect expiry, marbles round auto-advance, chess clocks, chess auto-restart). The old polling endpoints were removed.
 

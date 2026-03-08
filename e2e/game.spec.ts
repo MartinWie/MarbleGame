@@ -570,13 +570,17 @@ test.describe('Chess Joining', () => {
 
       const debugHooks = await p1.evaluate(() => {
         const dbg = window.__chessDebug || {};
+        const content = document.getElementById('chess-content');
         return {
           onResumeVisibilityChange: typeof dbg.onResumeVisibilityChange,
           onResumeFocus: typeof dbg.onResumeFocus,
           onResumePageShow: typeof dbg.onResumePageShow,
           simulateResumeRecovery: typeof dbg.simulateResumeRecovery,
+          getResumeConfig: typeof dbg.getResumeConfig,
+          setResumeState: typeof dbg.setResumeState,
           setDisableScheduledReconnect: typeof dbg.setDisableScheduledReconnect,
           wsState: typeof dbg.wsState,
+          stalePingMsAttr: content ? content.getAttribute('data-resume-stale-ping-ms') : null,
         };
       });
 
@@ -584,14 +588,35 @@ test.describe('Chess Joining', () => {
       expect(debugHooks.onResumeFocus).toBe('function');
       expect(debugHooks.onResumePageShow).toBe('function');
       expect(debugHooks.simulateResumeRecovery).toBe('function');
+      expect(debugHooks.getResumeConfig).toBe('function');
+      expect(debugHooks.setResumeState).toBe('function');
       expect(debugHooks.setDisableScheduledReconnect).toBe('function');
       expect(debugHooks.wsState).toBe('function');
+      expect(debugHooks.stalePingMsAttr).toBeTruthy();
+
+      const cfg = await p1.evaluate(() => {
+        if (window.__chessDebug && typeof window.__chessDebug.getResumeConfig === 'function') {
+          return window.__chessDebug.getResumeConfig();
+        }
+        return null;
+      });
+      expect(cfg).not.toBeNull();
+      expect((cfg as any).resumeStalePingMs).toBe(15000);
 
       const beforeSimulated = await p1.evaluate(() => {
         if (window.__chessDebug && typeof window.__chessDebug.wsState === 'function') {
           return window.__chessDebug.wsState();
         }
         return null;
+      });
+
+      await p1.evaluate(() => {
+        if (window.__chessDebug && typeof window.__chessDebug.setResumeState === 'function') {
+          window.__chessDebug.setResumeState({
+            forceReadyState: WebSocket.OPEN,
+            lastPingDeltaMs: 60000,
+          });
+        }
       });
 
       await p1.evaluate(() => {

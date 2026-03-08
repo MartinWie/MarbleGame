@@ -4,6 +4,11 @@ function initChess(gameId) {
     }
 
     var chessContent = document.getElementById('chess-content');
+    var resumeStalePingMs = parseInt(chessContent && chessContent.getAttribute('data-resume-stale-ping-ms') || '15000', 10);
+    if (!Number.isFinite(resumeStalePingMs)) {
+        resumeStalePingMs = 15000;
+    }
+    resumeStalePingMs = Math.max(5000, Math.min(120000, resumeStalePingMs));
     var webSocket = null;
     var countdownInterval = null;
     var reconnectTimeout = null;
@@ -55,6 +60,7 @@ function initChess(gameId) {
     var boardArrowHeadId = 'chess-arrow-head-' + gameId;
     var boardArrowHeadAltId = 'chess-arrow-head-alt-' + gameId;
     var boardArrowGlobalBound = false;
+    var chessDebugEnabled = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
     function closeRealtimeConnection() {
         if (connectWatchdogTimeout) {
@@ -494,18 +500,20 @@ function initChess(gameId) {
             : ((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/chess/' + gameId);
         webSocket = new WebSocket(wsTarget);
         window.__lastWs = webSocket;
-        window.__chessDebug = window.__chessDebug || {};
-        window.__chessDebug.wsState = function() {
-            return {
-                hasWs: !!webSocket,
-                readyState: webSocket ? webSocket.readyState : -1,
-                isConnecting: isConnecting,
-                reconnectDelayMs: reconnectDelayMs,
-                connectAttemptStartedAt: connectAttemptStartedAt,
-                lastResumeTriggerAt: debugLastResumeTrigger,
-                resumeReconnectAttempts: debugResumeReconnectAttempts,
+        if (chessDebugEnabled) {
+            window.__chessDebug = window.__chessDebug || {};
+            window.__chessDebug.wsState = function() {
+                return {
+                    hasWs: !!webSocket,
+                    readyState: webSocket ? webSocket.readyState : -1,
+                    isConnecting: isConnecting,
+                    reconnectDelayMs: reconnectDelayMs,
+                    connectAttemptStartedAt: connectAttemptStartedAt,
+                    lastResumeTriggerAt: debugLastResumeTrigger,
+                    resumeReconnectAttempts: debugResumeReconnectAttempts,
+                };
             };
-        };
+        }
         lastPingTime = Date.now();
 
         connectWatchdogTimeout = setTimeout(function() {
@@ -591,7 +599,7 @@ function initChess(gameId) {
         var readyState = webSocket ? webSocket.readyState : WebSocket.CLOSED;
         var isOpen = readyState === WebSocket.OPEN;
         var isConnectingSocket = readyState === WebSocket.CONNECTING;
-        var staleOpenConnection = isOpen && (now - lastPingTime > 15000);
+        var staleOpenConnection = isOpen && (now - lastPingTime > resumeStalePingMs);
         var stuckConnect = (isConnecting || isConnectingSocket) && connectAttemptStartedAt > 0 && (now - connectAttemptStartedAt > 4000);
 
         if (isOpen && !staleOpenConnection && !stuckConnect) {
@@ -615,6 +623,33 @@ function initChess(gameId) {
         debugResumeReconnectAttempts += 1;
         isConnecting = false;
         connect();
+    }
+
+    function debugGetResumeConfig() {
+        return {
+            resumeStalePingMs: resumeStalePingMs,
+        };
+    }
+
+    function debugSetResumeState(state) {
+        if (!state) return;
+        if (typeof state.lastPingDeltaMs === 'number') {
+            lastPingTime = Date.now() - Math.max(0, state.lastPingDeltaMs);
+        }
+        if (typeof state.isConnecting === 'boolean') {
+            isConnecting = !!state.isConnecting;
+        }
+        if (typeof state.connectAttemptAgeMs === 'number') {
+            connectAttemptStartedAt = Date.now() - Math.max(0, state.connectAttemptAgeMs);
+        }
+        if (typeof state.forceReadyState === 'number' && webSocket) {
+            try {
+                Object.defineProperty(webSocket, 'readyState', {
+                    configurable: true,
+                    get: function() { return state.forceReadyState; },
+                });
+            } catch (_) {}
+        }
     }
 
     function onResumeVisibilityChange() {
@@ -1101,23 +1136,27 @@ function initChess(gameId) {
         renderBoardArrows();
     }
 
-    window.__chessDebug = window.__chessDebug || {};
-    window.__chessDebug.clearAnnotations = clearBoardAnnotations;
-    window.__chessDebug.setDisableScheduledReconnect = function(disabled) {
-        debugDisableScheduledReconnect = !!disabled;
-    };
-    window.__chessDebug.onResumeVisibilityChange = onResumeVisibilityChange;
-    window.__chessDebug.onResumeFocus = onResumeFocus;
-    window.__chessDebug.onResumePageShow = onResumePageShow;
-    window.__chessDebug.simulateResumeRecovery = debugSimulateResumeRecovery;
-    window.__chessDebug.getAnnotations = function() {
-        return {
-            arrows: boardArrows.map(function(a) { return { from: a.from, to: a.to, alt: !!a.alt }; }),
-            marks: boardMarks.map(function(m) { return { square: m.square, alt: !!m.alt }; }),
-            preview: boardArrowPreview ? { from: boardArrowPreview.from, to: boardArrowPreview.to, alt: !!boardArrowPreview.alt } : null,
+    if (chessDebugEnabled) {
+        window.__chessDebug = window.__chessDebug || {};
+        window.__chessDebug.clearAnnotations = clearBoardAnnotations;
+        window.__chessDebug.setDisableScheduledReconnect = function(disabled) {
+            debugDisableScheduledReconnect = !!disabled;
         };
-    };
-    window.__chessDebug.ensureConnectedAfterResume = ensureConnectedAfterResume;
+        window.__chessDebug.onResumeVisibilityChange = onResumeVisibilityChange;
+        window.__chessDebug.onResumeFocus = onResumeFocus;
+        window.__chessDebug.onResumePageShow = onResumePageShow;
+        window.__chessDebug.simulateResumeRecovery = debugSimulateResumeRecovery;
+        window.__chessDebug.getResumeConfig = debugGetResumeConfig;
+        window.__chessDebug.setResumeState = debugSetResumeState;
+        window.__chessDebug.getAnnotations = function() {
+            return {
+                arrows: boardArrows.map(function(a) { return { from: a.from, to: a.to, alt: !!a.alt }; }),
+                marks: boardMarks.map(function(m) { return { square: m.square, alt: !!m.alt }; }),
+                preview: boardArrowPreview ? { from: boardArrowPreview.from, to: boardArrowPreview.to, alt: !!boardArrowPreview.alt } : null,
+            };
+        };
+        window.__chessDebug.ensureConnectedAfterResume = ensureConnectedAfterResume;
+    }
 
     function toggleBoardMark(square, alt) {
         if (!square) return;
