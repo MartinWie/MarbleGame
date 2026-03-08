@@ -49,7 +49,7 @@ async function createGame(page, baseUrl, playerName) {
   await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' });
 
   await page.locator('#create-form-marbles input[name="playerName"]').fill(playerName);
-  await page.getByRole('button', { name: 'Create Marbles' }).click();
+  await page.getByRole('button', { name: 'Start Game' }).click();
 
   await page.waitForURL(/\/game\/[a-f0-9]{8}$/);
 

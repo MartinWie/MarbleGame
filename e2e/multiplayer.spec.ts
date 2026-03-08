@@ -27,7 +27,7 @@ async function createGame(page: Page, playerName: string): Promise<string> {
   await page.goto('/');
   const marblesForm = page.locator('#create-form-marbles');
   await marblesForm.locator('input[name="playerName"]').fill(playerName);
-  await marblesForm.getByRole('button', { name: 'Create Marbles' }).click();
+  await marblesForm.getByRole('button', { name: 'Start Game' }).click();
   await expect(page).toHaveURL(/\/game\/[a-f0-9]{8}/);
   return page.url();
 }

@@ -75,7 +75,7 @@ class ApplicationTest {
                 }.apply {
                     assertEquals(HttpStatusCode.OK, status)
                     val body = bodyAsText()
-                    assertTrue(body.contains("Spiele") || body.contains("Murmeln"))
+                    assertTrue(body.contains("Marbles") || body.contains("Spiel starten"))
                 }
         }
 
@@ -91,7 +91,7 @@ class ApplicationTest {
                 }.apply {
                     assertEquals(HttpStatusCode.OK, status)
                     val body = bodyAsText()
-                    assertTrue(body.contains("Games") || body.contains("Marble"))
+                    assertTrue(body.contains("Marbles") || body.contains("Start Game"))
                 }
         }
 

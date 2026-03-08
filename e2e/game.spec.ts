@@ -10,8 +10,8 @@ test.describe('Homepage', () => {
   test('should load the homepage', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page).toHaveTitle(/Games/);
-    await expect(page.locator('h1')).toContainText('Games');
+    await expect(page).toHaveTitle(/Marbles/);
+    await expect(page.locator('h1')).toContainText('Marbles');
   });
 
   test('should not include PostHog script when analytics disabled', async ({ page }) => {
@@ -34,7 +34,7 @@ test.describe('Homepage', () => {
     await page.goto('/');
 
     await expect(marblesForm(page).locator('input[name="playerName"]')).toBeVisible();
-    await expect(marblesForm(page).getByRole('button', { name: 'Create Marbles' })).toBeVisible();
+    await expect(marblesForm(page).getByRole('button', { name: 'Start Game' })).toBeVisible();
   });
 
   test('player name input should be required', async ({ page }) => {
@@ -52,7 +52,7 @@ test.describe('Game Creation', () => {
     await page.goto('/');
 
     await marblesForm(page).locator('input[name="playerName"]').fill('TestPlayer');
-    await marblesForm(page).getByRole('button', { name: 'Create Marbles' }).click();
+    await marblesForm(page).getByRole('button', { name: 'Start Game' }).click();
 
     await expect(page).toHaveURL(/\/game\/[a-f0-9]{8}/);
     await expect(page.locator('h1')).toContainText('Marble Game');
@@ -63,7 +63,7 @@ test.describe('Game Creation', () => {
 
     const playerName = 'E2ETestPlayer';
     await marblesForm(page).locator('input[name="playerName"]').fill(playerName);
-    await marblesForm(page).getByRole('button', { name: 'Create Marbles' }).click();
+    await marblesForm(page).getByRole('button', { name: 'Start Game' }).click();
 
     await expect(page).toHaveURL(/\/game\/[a-f0-9]{8}/);
     await expect(page.getByText(playerName)).toBeVisible();
